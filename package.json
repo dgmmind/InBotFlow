@@ -1,7 +1,7 @@
 {
   "name": "inbotflow",
   "version": "1.0.0",
-  "description": "InBotFlow es una plataforma open source para crear y automatizar flujos conversacionales en WhatsApp usando Baileys.js y campos de texto. Define interacciones personalizadas sin codificar, con integración directa a WhatsApp. ¡Contribuye y ayuda a mejorar este proyecto de automatización accesible para todos!",
+  "description": "InBotFlow una conexión con WhatsApp usando Baileys.js",
   "main": "index.js",
   "type": "module",
   "scripts": {
