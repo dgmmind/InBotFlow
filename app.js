@@ -1,94 +1,66 @@
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers } from '@whiskeysockets/baileys';
-import pino from 'pino';
-import qrcode from 'qrcode-terminal';
+import { BaileysService } from './BaileysService.js';
+import { Manager } from './Manager.js';
 
-export class WhatsAppService {
-    constructor() {
-        this.sock = null;
-        this.authState = null;
-        this.isConnected = false;
-    }
 
-    shouldProcessMessage(msg, type) {
-        if (type !== 'notify') return false;
-        if (msg.key.fromMe) return false;
-        if (!msg.message) return false;
-        if (msg.message.protocolMessage || msg.message.senderKeyDistributionMessage) return false;
-        return true;
-    }
+async function main() {
+ 
+  // Iniciar servicio de WhatsApp
+  const service = new BaileysService();
+  await service.connect();
 
-    registerMessageHandler() {
-        this.sock.ev.removeAllListeners('messages.upsert');
-        this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
-            for (const msg of messages) {
-                if (!this.shouldProcessMessage(msg, type)) continue;
-                const { key } = msg;
-                const from = key.remoteJid;
-                const sender = key.participant || from;
-                console.log(`Mensaje recibido de: ${sender}`);
-                await this.sock.sendMessage(from, { text: '¡Mensaje recibido!' });
-            }
-        });
-    }
+  // Manejar cierre graceful
+  process.on("SIGINT", async () => {
+    console.log('Cerrando servidor...');
+    await Manager.getInstance().shutdown();
+    process.exit(0);
+  });
 
-    async connect() {
-        const { state, saveCreds } = await useMultiFileAuthState('./sessions');
-        this.authState = { state, saveCreds };
-        const log = pino({ level: 'error' });
-
-        this.sock = makeWASocket({
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, log),
-            },
-            browser: Browsers.windows('Desktop'),
-            syncFullHistory: false,
-            logger: log,
-            shouldIgnoreJid: (jid) => /@g\.us/.test(jid) || jid === 'status@broadcast' || /@broadcast/.test(jid)
-        });
-
-        this.sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-            if (qr) {
-                console.log('🔐 Escanea este código QR para vincular tu WhatsApp:');
-                qrcode.generate(qr, { small: true });
-            }
-            if (connection === 'close') {
-                this.isConnected = false;
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
-                    console.log('Reconectando en 3 segundos...');
-                    setTimeout(() => this.connect(), 3000);
-                } else {
-                    console.log('Conexión cerrada por logout. Escanea el QR nuevamente.');
-                }
-            } else if (connection === 'open') {
-                this.isConnected = true;
-                console.log('✅ Conexión establecida con WhatsApp');
-                this.registerMessageHandler();
-            }
-        });
-
-        this.sock.ev.on('lid-mapping.update', (mapping) => {
-            console.log('LID mapping updated:', mapping);
-        });
-
-        this.sock.ev.on('creds.update', this.authState.saveCreds);
-    }
-
-    async sendMessage(to, text) {
-        if (!this.sock) throw new Error('No hay conexión activa. Llama a connect() primero.');
-        return await this.sock.sendMessage(to, { text });
-    }
-
-    async disconnect() {
-        if (this.sock) {
-            await this.sock.logout();
-            this.sock = null;
-            this.isConnected = false;
-            console.log('Conexión desconectada.');
-        }
-    }
+  process.on("SIGTERM", async () => {
+    console.log('Cerrando servidor...');
+    await Manager.getInstance().shutdown();
+    process.exit(0);
+  });
 }
 
-const whatsappService = new WhatsAppService();
-whatsappService.connect();
+main();
+import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const app = express();
+const PORT = 3000;
+
+// __dirname equivalente en ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Middleware para parsear JSON
+app.use(express.json());
+
+// Servir archivos estáticos desde la carpeta "public"
+app.use(express.static(path.join(__dirname, "public")));
+
+// Servir el archivo data.json estáticamente
+app.use('/data.json', express.static(path.join(__dirname, "data.json")));
+
+// Ruta principal -> mostrará index.html automáticamente
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Endpoint para guardar el JSON
+app.post('/save-json', async (req, res) => {
+  try {
+    const fs = await import('fs');
+    const jsonData = JSON.stringify(req.body, null, 2);
+    fs.writeFileSync(path.join(__dirname, 'data.json'), jsonData, 'utf8');
+    res.status(200).json({ message: 'JSON guardado exitosamente' });
+  } catch (error) {
+    console.error('Error al guardar JSON:', error);
+    res.status(500).json({ error: 'Error al guardar el archivo JSON' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});

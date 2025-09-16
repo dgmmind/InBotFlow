@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Editor de Flujos</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    textarea { width: 100%; }
+    .flow { border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; }
+    .steps { border-top: 1px dashed #aaa; margin-top: 10px; padding-top: 10px; }
+    .step { border: 1px solid #ddd; padding: 5px; margin-bottom: 5px; }
+    button { margin-right: 5px; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Editor de Flujos Conversacionales</h1>
+
+  <div>
+    <button id="loadAutoJsonBtn">Cargar JSON Automático</button>
+    <button id="createFlowBtn">+ Crear Nuevo Flow</button>
+    <button id="downloadJsonBtn">Descargar JSON</button>
+    <button id="saveJsonBtn">Guardar Cambios</button>
+  </div>
+  <div id="statusMessage" style="color: green; margin: 10px 0;"></div>
+
+  <hr>
+
+  <!-- Modal para crear/editar flow -->
+  <div id="flowModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; min-width: 400px;">
+      <h3 id="modalTitle">Crear Nuevo Flow</h3>
+      <div style="margin: 10px 0;">
+        <label>Nombre del Flow:</label><br>
+        <input type="text" id="modalFlowName" style="width: 100%; margin: 5px 0;"><br>
+        <label>Tipo:</label><br>
+        <select id="modalFlowType" style="width: 100%; margin: 5px 0;">
+          <option value="main">main</option>
+          <option value="subflow">subflow</option>
+        </select><br>
+        <label>ID:</label><br>
+        <input type="number" id="modalFlowId" style="width: 100%; margin: 5px 0;"><br>
+        <label>Triggers (separados por coma):</label><br>
+        <input type="text" id="modalFlowTriggers" placeholder="hola, pedido, quiero" style="width: 100%; margin: 5px 0;">
+      </div>
+      <div style="text-align: right;">
+        <button onclick="closeFlowModal()">Cancelar</button>
+        <button onclick="saveFlow()" style="margin-left: 10px;">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para configurar subflows -->
+  <div id="subflowModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; min-width: 500px; max-height: 80vh; overflow-y: auto;">
+      <h3>Configurar Subflows</h3>
+      <div id="subflowConfig"></div>
+      <div style="text-align: right; margin-top: 20px;">
+        <button onclick="closeSubflowModal()">Cancelar</button>
+        <button onclick="saveSubflows()" style="margin-left: 10px;">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flowsContainer"></div>
+
+  <script>
+let flows = {};
+const jsonInput = document.getElementById("jsonInput");
+const flowsContainer = document.getElementById("flowsContainer");
+
+// Cargar JSON automáticamente desde el servidor
+async function loadJsonFromServer() {
+  try {
+    const response = await fetch('/data.json');
+    flows = await response.json();
+    renderFlows();
+    showStatus('JSON cargado automáticamente', 'success');
+  } catch (e) {
+    showStatus('Error al cargar JSON: ' + e.message, 'error');
+  }
+}
+
+document.getElementById("loadAutoJsonBtn").addEventListener("click", loadJsonFromServer);
+
+document.getElementById("createFlowBtn").addEventListener("click", () => {
+  openFlowModal();
+});
+
+// Guardar JSON en el servidor
+document.getElementById("saveJsonBtn").addEventListener("click", async () => {
+  try {
+    const response = await fetch('/save-json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(flows, null, 2)
+    });
+    
+    if (response.ok) {
+      showStatus('JSON guardado exitosamente', 'success');
+    } else {
+      showStatus('Error al guardar JSON', 'error');
+    }
+  } catch (e) {
+    showStatus('Error al guardar: ' + e.message, 'error');
+  }
+});
+
+function showStatus(message, type) {
+  const statusDiv = document.getElementById('statusMessage');
+  statusDiv.textContent = message;
+  statusDiv.style.color = type === 'success' ? 'green' : 'red';
+  setTimeout(() => {
+    statusDiv.textContent = '';
+  }, 3000);
+}
+
+// Funciones para manejar el modal de flows
+let currentFlowKey = null;
+let currentStepIndex = null;
+
+function openFlowModal(flowKey = null) {
+  const modal = document.getElementById('flowModal');
+  const title = document.getElementById('modalTitle');
+  
+  if (flowKey && flows[flowKey]) {
+    title.textContent = 'Editar Flow';
+    document.getElementById('modalFlowName').value = flowKey;
+    document.getElementById('modalFlowType').value = flows[flowKey].type;
+    document.getElementById('modalFlowId').value = flows[flowKey].id;
+    document.getElementById('modalFlowTriggers').value = flows[flowKey].triggers ? flows[flowKey].triggers.join(', ') : '';
+    currentFlowKey = flowKey;
+  } else {
+    title.textContent = 'Crear Nuevo Flow';
+    document.getElementById('modalFlowName').value = '';
+    document.getElementById('modalFlowType').value = 'main';
+    document.getElementById('modalFlowId').value = '';
+    document.getElementById('modalFlowTriggers').value = '';
+    currentFlowKey = null;
+  }
+  
+  modal.style.display = 'block';
+}
+
+function closeFlowModal() {
+  document.getElementById('flowModal').style.display = 'none';
+  currentFlowKey = null;
+}
+
+function saveFlow() {
+  const name = document.getElementById('modalFlowName').value.trim();
+  const type = document.getElementById('modalFlowType').value;
+  const id = parseInt(document.getElementById('modalFlowId').value);
+  const triggersStr = document.getElementById('modalFlowTriggers').value.trim();
+  
+  if (!name || !id) {
+    alert('Nombre e ID son obligatorios');
+    return;
+  }
+  
+  const triggers = triggersStr ? triggersStr.split(',').map(t => t.trim()).filter(t => t !== '') : [];
+  
+  if (currentFlowKey && currentFlowKey !== name) {
+    // Renombrar flow
+    flows[name] = flows[currentFlowKey];
+    delete flows[currentFlowKey];
+  }
+  
+  flows[name] = {
+    type: type,
+    id: id,
+    triggers: triggers,
+    steps: flows[name] ? flows[name].steps : []
+  };
+  
+  closeFlowModal();
+  renderFlows();
+  showStatus('Flow guardado exitosamente', 'success');
+}
+
+// Funciones para manejar subflows
+function openSubflowModal(flowKey, stepIndex) {
+  currentFlowKey = flowKey;
+  currentStepIndex = stepIndex;
+  
+  const modal = document.getElementById('subflowModal');
+  const configDiv = document.getElementById('subflowConfig');
+  const step = flows[flowKey].steps[stepIndex];
+  
+  // Parsear la pregunta para obtener opciones
+  const question = step.question || '';
+  const lines = question.split('\n');
+  const options = [];
+  
+  lines.forEach((line, index) => {
+    const match = line.match(/^\d+\.\s*(.+)$/);
+    if (match) {
+      options.push({
+        number: index + 1,
+        text: match[1].trim(),
+        key: match[1].trim().toLowerCase().replace(/\s+/g, '')
+      });
+    }
+  });
+  
+  let html = '<div><b>Paso:</b> ' + step.question + '</div>';
+  html += '<div style="margin: 15px 0;"><b>Configurar subflows para cada opción:</b></div>';
+  
+  options.forEach(option => {
+    const currentSubflows = step.subflows || {};
+    const assignedFlowId = Object.keys(currentSubflows).find(key => 
+      currentSubflows[key].includes(option.number.toString()) || 
+      currentSubflows[key].includes(option.key)
+    );
+    
+    html += `<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">`;
+    html += `<div><b>Opción ${option.number}:</b> ${option.text}</div>`;
+    
+    // Obtener las opciones numéricas actuales
+    const currentNumbers = assignedFlowId && currentSubflows[assignedFlowId] ? 
+      currentSubflows[assignedFlowId].filter(item => /^\d+$/.test(item)) : [option.number.toString()];
+    
+    html += `<div style="margin: 5px 0;">`;
+    html += `<label>Opciones numéricas (separadas por coma):</label><br>`;
+    html += `<input type="text" id="numbers-${option.number}" value="${currentNumbers.join(', ')}" placeholder="1, uno, 1" style="width: 100%; margin: 5px 0;">`;
+    html += `<small style="color: #666;">Números y variantes que activarán este subflow</small>`;
+    html += `</div>`;
+    
+    html += `<div style="margin: 5px 0;">`;
+    html += `<label>Subflow a activar:</label><br>`;
+    html += `<select id="subflow-${option.number}" style="width: 100%; margin: 5px 0;">`;
+    html += `<option value="">-- Ninguno --</option>`;
+    
+    // Listar todos los subflows disponibles
+    Object.entries(flows).forEach(([flowName, flow]) => {
+      if (flow.type === 'subflow') {
+        const selected = assignedFlowId === flow.id.toString() ? 'selected' : '';
+        html += `<option value="${flow.id}" ${selected}>${flowName} (ID: ${flow.id})</option>`;
+      }
+    });
+    
+    html += `</select>`;
+    
+    // Campo para palabras de activación
+    const currentActivationWords = assignedFlowId && currentSubflows[assignedFlowId] ? 
+      currentSubflows[assignedFlowId].filter(item => !/^\d+$/.test(item) && !option.key.includes(item)) : [];
+    
+    html += `<div style="margin: 5px 0;">`;
+    html += `<label>Palabras de activación (separadas por coma):</label><br>`;
+    html += `<input type="text" id="activation-${option.number}" value="${currentActivationWords.join(', ')}" placeholder="cafe, café, bebida" style="width: 100%; margin: 5px 0;">`;
+    html += `<small style="color: #666;">Palabras que activarán este subflow además de las opciones numéricas</small>`;
+    html += `</div>`;
+    
+    html += `</div>`;
+    html += `</div>`;
+  });
+  
+  configDiv.innerHTML = html;
+  modal.style.display = 'block';
+}
+
+function closeSubflowModal() {
+  document.getElementById('subflowModal').style.display = 'none';
+  currentFlowKey = null;
+  currentStepIndex = null;
+}
+
+function saveSubflows() {
+  const step = flows[currentFlowKey].steps[currentStepIndex];
+  const question = step.question || '';
+  const lines = question.split('\n');
+  const options = [];
+  
+  lines.forEach((line, index) => {
+    const match = line.match(/^\d+\.\s*(.+)$/);
+    if (match) {
+      options.push({
+        number: index + 1,
+        key: match[1].trim().toLowerCase().replace(/\s+/g, '')
+      });
+    }
+  });
+  
+  const subflows = {};
+  
+  options.forEach(option => {
+    const select = document.getElementById(`subflow-${option.number}`);
+    const selectedFlowId = select.value;
+    
+    if (selectedFlowId) {
+      if (!subflows[selectedFlowId]) {
+        subflows[selectedFlowId] = [];
+      }
+      
+      // Agregar opciones numéricas editables
+      const numbersInput = document.getElementById(`numbers-${option.number}`);
+      const numbers = numbersInput.value.trim();
+      
+      if (numbers) {
+        const numberList = numbers.split(',').map(num => num.trim()).filter(num => num !== '');
+        numberList.forEach(num => {
+          if (!subflows[selectedFlowId].includes(num)) {
+            subflows[selectedFlowId].push(num);
+          }
+        });
+      }
+      
+      // Agregar el key automáticamente
+      if (!subflows[selectedFlowId].includes(option.key)) {
+        subflows[selectedFlowId].push(option.key);
+      }
+      
+      // Agregar palabras de activación adicionales
+      const activationInput = document.getElementById(`activation-${option.number}`);
+      const activationWords = activationInput.value.trim();
+      
+      if (activationWords) {
+        const words = activationWords.split(',').map(word => word.trim()).filter(word => word !== '');
+        words.forEach(word => {
+          if (!subflows[selectedFlowId].includes(word)) {
+            subflows[selectedFlowId].push(word);
+          }
+        });
+      }
+    }
+  });
+  
+  step.subflows = Object.keys(subflows).length > 0 ? subflows : undefined;
+  
+  closeSubflowModal();
+  renderFlows();
+  showStatus('Subflows configurados exitosamente', 'success');
+}
+
+document.getElementById("downloadJsonBtn").addEventListener("click", () => {
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(flows, null, 2));
+  const a = document.createElement("a");
+  a.setAttribute("href", dataStr);
+  a.setAttribute("download", "flows.json");
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+});
+
+function renderFlows() {
+  flowsContainer.innerHTML = "";
+  Object.entries(flows).forEach(([flowKey, flow]) => {
+    const flowDiv = document.createElement("div");
+    flowDiv.className = "flow";
+    flowDiv.innerHTML = `
+      <div>
+        <b>Nombre del Flow:</b> 
+        <input type="text" id="flowName-${flowKey}" value="${flowKey}" onchange="updateFlowName('${flowKey}', this.value)">
+        <b>Tipo:</b>
+        <select id="flowType-${flowKey}" onchange="updateFlowType('${flowKey}', this.value)">
+          <option value="main" ${flow.type === 'main' ? 'selected' : ''}>main</option>
+          <option value="subflow" ${flow.type === 'subflow' ? 'selected' : ''}>subflow</option>
+        </select>
+        <button onclick="deleteFlow('${flowKey}')">Eliminar</button>
+      </div>
+      <div><b>ID:</b> <input type="number" id="flowId-${flowKey}" value="${flow.id}" onchange="updateFlowId('${flowKey}', this.value)"></div>
+      <div><b>Triggers:</b> <input type="text" id="flowTriggers-${flowKey}" value="${flow.triggers ? flow.triggers.join(", ") : ""}" onchange="updateFlowTriggers('${flowKey}', this.value)" placeholder="separados por coma"></div>
+      <div class="steps">
+        <b>Pasos:</b>
+        <div id="steps-${flowKey}">
+          ${flow.steps.map((step, index) => `
+            <div class="step">
+              <b>Paso ${step.step}:</b><br>
+              <input type="text" id="stepQuestion-${flowKey}-${index}" value="${step.question || ''}" onchange="updateStepQuestion('${flowKey}', ${index}, this.value)" style="width: 100%; margin: 5px 0;"><br>
+              <b>Key:</b> <input type="text" id="stepKey-${flowKey}-${index}" value="${step.key || ''}" onchange="updateStepKey('${flowKey}', ${index}, this.value)">
+              <button onclick="deleteStep('${flowKey}', ${index})">Eliminar Paso</button>
+              ${step.question && step.question.includes('\n') ? `<button onclick="openSubflowModal('${flowKey}', ${index})" style="margin-left: 5px;">Configurar Subflows</button>` : ''}
+              ${step.subflows ? (() => {
+                let subflowDetails = '<div style="margin: 5px 0; padding: 5px; background: #f0f8ff; border-radius: 3px;">';
+                subflowDetails += '<small>🔗 Subflows configurados:</small>';
+                
+                Object.entries(step.subflows).forEach(([flowId, activations]) => {
+                  const flow = Object.values(flows).find(f => f.id.toString() === flowId);
+                  const flowName = flow ? Object.keys(flows).find(key => flows[key] === flow) : flowId;
+                  const numbers = activations.filter(item => /^\d+$/.test(item));
+                  const words = activations.filter(item => !/^\d+$/.test(item) && !flows[item]);
+                  
+                  subflowDetails += `<div style="margin-left: 10px; margin-top: 3px;">`;
+                  subflowDetails += `<small>• ${flowName} (ID: ${flowId}) - Opciones: ${numbers.join(', ')}`;
+                  if (words.length > 0) {
+                    subflowDetails += ` - Palabras: ${words.join(', ')}`;
+                  }
+                  subflowDetails += `</small></div>`;
+                });
+                
+                subflowDetails += '</div>';
+                return subflowDetails;
+              })() : ''}
+            </div>
+          `).join("")}
+        </div>
+        <button onclick="addStep('${flowKey}')">+ Agregar Paso</button>
+      </div>
+    `;
+    flowsContainer.appendChild(flowDiv);
+  });
+}
+
+// Funciones de edición
+function updateFlowName(oldKey, newKey) {
+  if (oldKey !== newKey && newKey.trim() !== '') {
+    flows[newKey] = flows[oldKey];
+    delete flows[oldKey];
+    renderFlows();
+  }
+}
+
+function updateFlowType(flowKey, newType) {
+  flows[flowKey].type = newType;
+}
+
+function updateFlowId(flowKey, newId) {
+  flows[flowKey].id = parseInt(newId);
+}
+
+function updateFlowTriggers(flowKey, triggersStr) {
+  flows[flowKey].triggers = triggersStr.split(',').map(t => t.trim()).filter(t => t !== '');
+}
+
+function updateStepQuestion(flowKey, stepIndex, newQuestion) {
+  flows[flowKey].steps[stepIndex].question = newQuestion;
+}
+
+function updateStepKey(flowKey, stepIndex, newKey) {
+  flows[flowKey].steps[stepIndex].key = newKey;
+}
+
+function deleteStep(flowKey, stepIndex) {
+  if (confirm('¿Eliminar este paso?')) {
+    flows[flowKey].steps.splice(stepIndex, 1);
+    // Reordenar números de pasos
+    flows[flowKey].steps.forEach((step, index) => {
+      step.step = index + 1;
+    });
+    renderFlows();
+  }
+}
+
+function deleteFlow(flowKey) {
+  if (confirm("¿Eliminar este flujo?")) {
+    delete flows[flowKey];
+    renderFlows();
+  }
+}
+
+function addStep(flowKey) {
+  const stepText = prompt("Texto de la pregunta del nuevo paso:");
+  if (!stepText) return;
+  const step = {
+    step: flows[flowKey].steps.length + 1,
+    question: stepText,
+    key: "nuevoCampo"
+  };
+  flows[flowKey].steps.push(step);
+  renderFlows();
+}
+
+  // Cargar automáticamente el JSON al iniciar la página
+  window.addEventListener('load', () => {
+    loadJsonFromServer();
+  });
+  </script>
+</body>
+</html>

@@ -1,28 +1,25 @@
 {
-  "name": "inbotflow",
+  "name": "newflow",
   "version": "1.0.0",
-  "description": "InBotFlow una conexión con WhatsApp usando Baileys.js",
-  "main": "index.js",
+  "main": "app.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node app.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/dgmmind/InBotFlow.git"
+    "start": "node FlowIa.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/dgmmind/InBotFlow/issues"
-  },
-  "homepage": "https://github.com/dgmmind/InBotFlow#readme",
+  "description": "",
   "dependencies": {
+    "@google/genai": "^1.19.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.2",
+    "baileys_helper": "^1.0.6",
     "dotenv": "^17.2.2",
-    "pino": "^9.9.4",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
+    "openai": "^5.20.2",
+    "pino": "^9.9.5",
     "pino-pretty": "^13.1.1",
     "qrcode-terminal": "^0.12.0",
     "redis": "^5.8.2"
