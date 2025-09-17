@@ -1,188 +1,114 @@
 {
   "main": {
     "type": "main",
-    "id": "1001",
-    "triggers": [
-      "hola",
-      "pedido",
-      "quiero"
-    ],
+    "id": 1001,
+    "triggers": ["hola", "pedido", "quiero"],
     "steps": [
       {
         "step": 1,
-        "type": "question",
         "question": "👋 Hola, ¿cuál es tu nombre?",
         "key": "nombre"
       },
       {
         "step": 2,
-        "type": "subflow",
-        "question": "¡Qué bien {{nombre}}! ¿Qué deseas pedir hoy?\\n1. Café\\n2. Helado\\n3. Pizza",
+        "question": "¡Qué bien {{nombre}}! ¿Qué deseas pedir hoy?\n1. Café\n2. Helado\n3. Pizza",
         "key": "opcion",
         "subflows": {
-          "2001": [
-            "1",
-            "cafe"
-          ],
-          "2002": [
-            "2",
-            "helado"
-          ],
-          "2003": [
-            "3",
-            "pizza"
-          ]
+          "2001": ["1", "cafe"],
+          "2002": ["2", "helado"],
+          "2003": ["3", "pizza"]
         }
       }
     ]
   },
   "cafe": {
     "type": "subflow",
-    "id": "2001",
+    "id": 2001,
     "steps": [
       {
         "step": 1,
-        "type": "options",
-        "question": "¿Qué tipo de café deseas?\\n1. Latte\\n2. Americano\\n3. Cappuccino",
+        "question": "¿Qué tipo de café deseas?\n1. Latte\n2. Americano\n3. Cappuccino",
         "key": "tipoCafe",
         "options": {
-          "latte": [
-            "1",
-            "latte"
-          ],
-          "americano": [
-            "2",
-            "americano"
-          ],
-          "cappuccino": [
-            "3",
-            "cappuccino"
-          ]
+          "latte": ["1", "latte"],
+          "americano": ["2", "americano"],
+          "cappuccino": ["3", "cappuccino"]
         }
       },
       {
         "step": 2,
-        "type": "options",
-        "question": "¿Con azúcar o sin azúcar?\\n1. Con azúcar\\n2. Sin azúcar",
+        "question": "¿Con azúcar o sin azúcar?\n1. Con azúcar\n2. Sin azúcar",
         "key": "azucar",
         "options": {
-          "con azucar": [
-            "1",
-            "con",
-            "con azucar"
-          ],
-          "sin azucar": [
-            "2",
-            "sin",
-            "sin azucar"
-          ]
+          "con azucar": ["1", "con", "con azucar"],
+          "sin azucar": ["2", "sin", "sin azucar"]
         }
       },
       {
         "step": 3,
-        "type": "question",
         "question": "Gracias, tu café será preparado ☕️ {{tipoCafe}} {{azucar}}",
-        "key": "null"
+        "key": null
       }
     ]
   },
   "helado": {
     "type": "subflow",
-    "id": "2002",
+    "id": 2002,
     "steps": [
       {
         "step": 1,
-        "type": "options",
-        "question": "¿Qué sabor de helado deseas?\\n1. Chocolate\\n2. Vainilla\\n3. Fresa",
+        "question": "¿Qué sabor de helado deseas?\n1. Chocolate\n2. Vainilla\n3. Fresa",
         "key": "saborHelado",
         "options": {
-          "chocolate": [
-            "1",
-            "chocolate"
-          ],
-          "vainilla": [
-            "2",
-            "vainilla"
-          ],
-          "fresa": [
-            "3",
-            "fresa"
-          ]
+          "chocolate": ["1", "chocolate"],
+          "vainilla": ["2", "vainilla"],
+          "fresa": ["3", "fresa"]
         }
       },
       {
         "step": 2,
-        "type": "options",
-        "question": "¿En qué lo quieres?\\n1. Cono\\n2. Vaso",
+        "question": "¿En qué lo quieres?\n1. Cono\n2. Vaso",
         "key": "presentacion",
         "options": {
-          "cono": [
-            "1",
-            "cono"
-          ],
-          "vaso": [
-            "2",
-            "vaso"
-          ]
+          "cono": ["1", "cono"],
+          "vaso": ["2", "vaso"]
         }
       },
       {
         "step": 3,
-        "type": "question",
         "question": "Genial, tu helado está en camino 🍦 {{saborHelado}} en {{presentacion}}",
-        "key": "null"
+        "key": null
       }
     ]
   },
   "pizza": {
     "type": "subflow",
-    "id": "2003",
+    "id": 2003,
     "steps": [
       {
         "step": 1,
-        "type": "options",
-        "question": "¿De qué sabor quieres la pizza?\\n1. Pepperoni\\n2. Hawaiana\\n3. Margarita",
+        "question": "¿De qué sabor quieres la pizza?\n1. Pepperoni\n2. Hawaiana\n3. Margarita",
         "key": "saborPizza",
         "options": {
-          "pepperoni": [
-            "1",
-            "pepperoni"
-          ],
-          "hawaiana": [
-            "2",
-            "hawaiana"
-          ],
-          "margarita": [
-            "3",
-            "margarita"
-          ]
+          "pepperoni": ["1", "pepperoni"],
+          "hawaiana": ["2", "hawaiana"],
+          "margarita": ["3", "margarita"]
         }
       },
       {
         "step": 2,
-        "type": "options",
-        "question": "¿Qué tamaño deseas?\\n1. Pequeña\\n2. Mediana\\n3. Grande",
+        "question": "¿Qué tamaño deseas?\n1. Pequeña\n2. Mediana\n3. Grande",
         "key": "tamanoPizza",
         "options": {
-          "pequeña": [
-            "1",
-            "pequeña"
-          ],
-          "mediana": [
-            "2",
-            "mediana"
-          ],
-          "grande": [
-            "3",
-            "grande"
-          ]
+          "pequeña": ["1", "pequeña", "chica"],
+          "mediana": ["2", "mediana"],
+          "grande": ["3", "grande"]
         }
       },
       {
         "step": 3,
-        "type": "question",
         "question": "Perfecto {{nombre}} 🍕, tu pizza {{saborPizza}} tamaño {{tamanoPizza}} está en camino.",
-        "key": "null"
+        "key": null
       }
     ]
   }

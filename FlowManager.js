@@ -123,7 +123,7 @@ export class FlowManager {
         throw new Error(`Unknown flow type "${flow.type}" for "${alias}" (ID ${flow.id}). Use "main" or "subflow"`);
       }
 
-      // Check subflows references
+     
       for (const step of flow.steps) {
         if (step.subflows) {
           for (const subflowId in step.subflows) {

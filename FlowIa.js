@@ -159,8 +159,7 @@ export class WhatsAppBot {
                 this.isConnected = false;
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
                 if (shouldReconnect) {
-                    console.log('Reconectando en 3 segundos...');
-                    setTimeout(() => this.connect(), 3000);
+                   this.connect();
                 } else {
                     console.log('Conexión cerrada por logout. Escanea el QR nuevamente.');
                 }
@@ -173,7 +172,7 @@ export class WhatsAppBot {
 
         
 
-       
+    
     }
 
     async sendMessage(to, text) {
@@ -195,6 +194,6 @@ export class WhatsAppBot {
 // Ejemplo de uso
 // ----------------------------
 (async () => {
-    const bot = new WhatsAppBot(process.env.GEMINI_API_KEY);
+    const bot = new WhatsAppBot(process.env.OPENAI_API_KEY);
     await bot.connect();
 })();

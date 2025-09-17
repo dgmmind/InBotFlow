@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flowchart Vanilla JS (POO) - Single File</title>
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--card:#0f1728;--accent:#22c55e;--muted:#9aa6b2}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e6eef6;background:linear-gradient(180deg,#071023 0%,#05101b 100%)}
+    .app{display:flex;height:100vh;gap:12px;padding:12px;box-sizing:border-box}
+    .sidebar{width:280px;background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    .canvas-wrap{flex:1;position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));}
+    header h1{font-size:16px;margin:0;color:var(--accent)}
+    .controls{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#d7e8f1;padding:8px;border-radius:8px;cursor:pointer}
+    button.primary{border-color:var(--accent);box-shadow:0 6px 18px rgba(34,197,94,0.08)}
+    .info{font-size:13px;color:var(--muted);margin-top:10px}
+
+    #flowcanvas{position:absolute;inset:0;touch-action:none}
+    .stage{position:absolute;inset:0;overflow:auto;background-image:radial-gradient(circle, rgba(34,197,94,0.1) 1px, transparent 1px);background-size:20px 20px;background-position:0 0}
+    
+    /* Guías de alineación */
+    .alignment-guide{position:absolute;pointer-events:none;z-index:1000}
+    .alignment-guide.vertical{width:1px;background:#ff4444;opacity:0.8;box-shadow:0 0 4px rgba(255,68,68,0.6)}
+    .alignment-guide.horizontal{height:1px;background:#ff4444;opacity:0.8;box-shadow:0 0 4px rgba(255,68,68,0.6)}
+    
+    /* Efecto de snap */
+    .box.snapping{transform:translate(var(--snap-x, 0px), var(--snap-y, 0px)) !important;transition:transform 0.1s ease-out}
+
+    .box{position:absolute;width:180px;height:100px;border-radius:8px;background:linear-gradient(180deg,#072a1a,#0d3023);border:1px solid #22c55e;box-shadow:0 0 0 2px rgba(34,197,94,0.3);cursor:grab;display:flex;flex-direction:column;color:#ffffff;}
+    .box.dragging{opacity:0.92;cursor:grabbing}
+    .box.selected{border-color:#ff4444;box-shadow:0 0 0 2px rgba(255,68,68,0.3);background:linear-gradient(180deg,#2a071a,#300d23)}
+    
+    .box-header{background:rgba(34,197,94,0.2);padding:6px 8px;border-bottom:1px solid rgba(34,197,94,0.3);font-size:12px;font-weight:600;text-align:center;flex-shrink:0}
+    .box-body{flex:1;padding:8px;display:flex;align-items:center;justify-content:center;font-size:11px;text-align:center;line-height:1.3}
+    .box-footer{background:rgba(0,0,0,0.2);padding:4px 8px;border-top:1px solid rgba(34,197,94,0.2);font-size:10px;text-align:center;color:rgba(255,255,255,0.7);flex-shrink:0}
+    
+    .box .title{pointer-events:none;font-weight:600}
+
+    .anchor{position:absolute;width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;cursor:crosshair}
+    .anchor:hover{background:var(--accent);border-color:rgba(255,255,255,0.12)}
+    .anchor[data-pos="top"]{left:50%;transform:translate(-50%,-50%);top:0}
+    .anchor[data-pos="bottom"]{left:50%;transform:translate(-50%,50%);bottom:0}
+    .anchor[data-pos="left"]{top:50%;transform:translate(-50%,-50%);left:0}
+    .anchor[data-pos="right"]{top:50%;transform:translate(50%,-50%);right:0}
+
+    .conn-label{position:absolute;padding:2px 6px;font-size:12px;border-radius:6px;background:rgba(2,6,23,0.7);color:#cfeee6;border:1px solid rgba(255,255,255,0.03)}
+    .conn-line{stroke:#22c55e;stroke-width:3;fill:none;cursor:pointer}
+    .conn-line.selected{stroke:#ff4444;stroke-width:4;filter:drop-shadow(0 0 4px rgba(255,68,68,0.6))}
+
+    .list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+    .list .row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+    footer{margin-top:12px;font-size:12px;color:var(--muted)}
+
+    @media (max-width:800px){.sidebar{display:none}.app{padding:8px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header>
+        <h1>FlowChart — Vanilla JS (POO)</h1>
+        <div class="info">Arrastra cajas, haz click en un punto de anclaje y luego en otro para conectar. Las líneas se adaptan automáticamente.</div>
+      </header>
+
+      <div class="controls">
+        <button id="addBoxBtn" class="primary">Agregar caja</button>
+        <button id="clearBtn">Limpiar todo</button>
+        <button id="removeDuplicatesBtn">Limpiar duplicados</button>
+        <div style="display:flex;gap:8px">
+          <button id="exportBtn">Exportar JSON</button>
+          <button id="importBtn">Importar JSON</button>
+        </div>
+      </div>
+
+      <div class="list">
+        <div class="row">Cajas: <span id="boxCount">0</span></div>
+        <div class="row">Conexiones: <span id="connCount">0</span></div>
+      </div>
+
+      <footer>
+        <div style="margin-top:8px">Etiquetas de conexión: se muestran sobre la línea con el formato <code>fromId.anchor → toId.anchor</code></div>
+      </footer>
+    </aside>
+
+    <div class="canvas-wrap">
+      <div id="flowcanvas" class="stage">
+        <svg id="svg" width="2000" height="2000" style="position:absolute;left:0;top:0;pointer-events:none"></svg>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+    class Box {
+      constructor(flow, id, x = 40, y = 40, title = ''){
+        this.flow = flow;
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.w = 180;
+        this.h = 100;
+        this.title = title || `Caja ${id}`;
+        this.el = this._createEl(); // Fixed method name
+        this._bindDrag();
+        this.updateDOM();
+      }
+      _createEl(){ // Renamed from _ceateEl to _createEl
+        const el = document.createElement('div');
+        el.className = 'box';
+        el.dataset.id = this.id;
+        el.innerHTML = `
+          <div class="box-header">${this.title}</div>
+          <div class="box-body">
+            <div class="title">Contenido</div>
+          </div>
+          <div class="box-footer">ID: ${this.id}</div>
+          <div class="anchor" data-pos="top" data-box="${this.id}" title="top"></div>
+          <div class="anchor" data-pos="right" data-box="${this.id}" title="right"></div>
+          <div class="anchor" data-pos="bottom" data-box="${this.id}" title="bottom"></div>
+          <div class="anchor" data-pos="left" data-box="${this.id}" title="left"></div>
+        `;
+        this.flow.stage.appendChild(el);
+        return el;
+      }
+      _bindDrag(){
+        const el = this.el;
+        let startX, startY, origX, origY, dragging = false;
+        const down = (e) => {
+          if(e.target.classList.contains('anchor')) return;
+          dragging = true; el.classList.add('dragging');
+          startX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+          startY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+          origX = this.x; origY = this.y;
+          e.preventDefault();
+        };
+        const move = (e) => {
+          if(!dragging) return;
+          const mx = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+          const my = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+          const dx = mx - startX; const dy = my - startY;
+          this.x = origX + dx; this.y = origY + dy;
+          
+          // Mostrar guías de alineación
+          this.flow.showAlignmentGuides(this);
+          
+          this.updateDOM();
+          this.flow.requestUpdate();
+        };
+        const up = () => { 
+          if(dragging){
+            dragging=false; 
+            el.classList.remove('dragging');
+            this.flow.hideAlignmentGuides();
+            this.flow.requestUpdate();
+          } 
+        };
+        el.addEventListener('mousedown', down);
+        el.addEventListener('touchstart', down, {passive:false});
+        window.addEventListener('mousemove', move);
+        window.addEventListener('touchmove', move, {passive:false});
+        window.addEventListener('mouseup', up);
+        window.addEventListener('touchend', up);
+      }
+      getAnchorPos(pos){
+        const left = this.x; const top = this.y;
+        switch(pos){
+          case 'top': return {x: left + this.w/2, y: top};
+          case 'bottom': return {x: left + this.w/2, y: top + this.h};
+          case 'left': return {x: left, y: top + this.h/2};
+          case 'right': return {x: left + this.w, y: top + this.h/2};
+        }
+      }
+      getAllAnchorPos(){
+        return {
+          top: this.getAnchorPos('top'),
+          bottom: this.getAnchorPos('bottom'),
+          left: this.getAnchorPos('left'),
+          right: this.getAnchorPos('right')
+        };
+      }
+      updateDOM(){
+        this.el.style.transform = `translate(${this.x}px, ${this.y}px)`;
+      }
+      setHeader(text){
+        const header = this.el.querySelector('.box-header');
+        if(header) header.textContent = text;
+      }
+      setBody(text){
+        const body = this.el.querySelector('.box-body .title');
+        if(body) body.textContent = text;
+      }
+      setFooter(text){
+        const footer = this.el.querySelector('.box-footer');
+        if(footer) footer.textContent = text;
+      }
+      serialize(){
+        return {id:this.id,x:this.x,y:this.y,w:this.w,h:this.h,title:this.title};
+      }
+      select(){
+        this.el.classList.add('selected');
+      }
+      deselect(){
+        this.el.classList.remove('selected');
+      }
+      isSelected(){
+        return this.el.classList.contains('selected');
+      }
+      destroy(){
+        this.el.remove();
+      }
+    }
+
+    class Connector {
+      constructor(flow, id, fromBox, fromAnchor, toBox, toAnchor){
+        this.flow = flow; this.id = id;
+        this.fromBox = fromBox; this.fromAnchor = fromAnchor;
+        this.toBox = toBox; this.toAnchor = toAnchor;
+        this.path = null; this.labelEl = null;
+        this._createSVG();
+      }
+      _createSVG(){
+        const svgNS = 'http://www.w3.org/2000/svg';
+        this.path = document.createElementNS(svgNS,'path');
+        this.path.setAttribute('stroke','#22c55e');
+        this.path.setAttribute('stroke-width','3');
+        this.path.setAttribute('fill','none');
+        this.path.setAttribute('data-conn-id',this.id);
+        this.path.classList.add('conn-line');
+        this.path.style.pointerEvents = 'stroke';
+        this.flow.svg.appendChild(this.path);
+
+        this.labelEl = document.createElement('div');
+        this.labelEl.className = 'conn-label';
+        this.flow.stage.appendChild(this.labelEl);
+        this._updateLabel();
+      }
+      _updateLabel(){
+        this.labelEl.textContent = `${this.fromBox.id}.${this.fromAnchor} → ${this.toBox.id}.${this.toAnchor}`;
+      }
+      _getBestAnchors(){
+        const fromAnchors = this.fromBox.getAllAnchorPos();
+        const toAnchors = this.toBox.getAllAnchorPos();
+        const anchorPoints = ['top', 'bottom', 'left', 'right'];
+
+        let bestFromAnchor = this.fromAnchor;
+        let bestToAnchor = this.toAnchor;
+        let minDistance = Infinity;
+
+        // Calculate relative position of toBox with respect to fromBox
+        const fromCenter = {x: this.fromBox.x + this.fromBox.w/2, y: this.fromBox.y + this.fromBox.h/2};
+        const toCenter = {x: this.toBox.x + this.toBox.w/2, y: this.toBox.y + this.toBox.h/2};
+        const dx = toCenter.x - fromCenter.x;
+        const dy = toCenter.y - fromCenter.y;
+
+        // Determine preferred anchors based on relative position
+        let preferredFrom = 'right', preferredTo = 'left';
+        if(Math.abs(dx) > Math.abs(dy)){
+          // Horizontal preference
+          if(dx > 0){
+            preferredFrom = 'right';
+            preferredTo = 'left';
+          } else {
+            preferredFrom = 'left';
+            preferredTo = 'right';
+          }
+        } else {
+          // Vertical preference
+          if(dy > 0){
+            preferredFrom = 'bottom';
+            preferredTo = 'top';
+          } else {
+            preferredFrom = 'top';
+            preferredTo = 'bottom';
+          }
+        }
+
+        // Check if the original anchors are still optimal or override with preferred ones
+        const distance = (p1, p2) => Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
+        for(const fAnchor of anchorPoints){
+          for(const tAnchor of anchorPoints){
+            const dist = distance(fromAnchors[fAnchor], toAnchors[tAnchor]);
+            if(dist < minDistance){
+              minDistance = dist;
+              bestFromAnchor = fAnchor;
+              bestToAnchor = tAnchor;
+            }
+          }
+        }
+
+        // Override with preferred anchors if they are close enough
+        const preferredDist = distance(fromAnchors[preferredFrom], toAnchors[preferredTo]);
+        if(preferredDist <= minDistance * 1.2){ // Allow 20% tolerance
+          bestFromAnchor = preferredFrom;
+          bestToAnchor = preferredTo;
+        }
+
+        return {fromAnchor: bestFromAnchor, toAnchor: bestToAnchor};
+      }
+      update(){
+        // Update anchors dynamically
+        const {fromAnchor, toAnchor} = this._getBestAnchors();
+        this.fromAnchor = fromAnchor;
+        this.toAnchor = toAnchor;
+
+        const a = this.fromBox.getAnchorPos(this.fromAnchor);
+        const b = this.toBox.getAnchorPos(this.toAnchor);
+        const dx = Math.abs(b.x - a.x);
+        const dy = Math.abs(b.y - a.y);
+        const cx1 = a.x + (this.fromAnchor === 'left' ? -dx*0.5 : (this.fromAnchor === 'right' ? dx*0.5 : 0));
+        const cy1 = a.y + (this.fromAnchor === 'top' ? -dy*0.3 : (this.fromAnchor === 'bottom' ? dy*0.3 : 0));
+        const cx2 = b.x + (this.toAnchor === 'left' ? -dx*0.5 : (this.toAnchor === 'right' ? dx*0.5 : 0));
+        const cy2 = b.y + (this.toAnchor === 'top' ? -dy*0.3 : (this.toAnchor === 'bottom' ? dy*0.3 : 0));
+        // Línea recta en lugar de curva
+        const d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+        this.path.setAttribute('d',d);
+        const mx = (a.x + b.x)/2; const my = (a.y + b.y)/2;
+        this.labelEl.style.transform = `translate(${mx}px, ${my}px)`;
+        this._updateLabel();
+      }
+      serialize(){
+        return {id:this.id,from:this.fromBox.id,fromAnchor:this.fromAnchor,to:this.toBox.id,toAnchor:this.toAnchor};
+      }
+      select(){
+        this.path.classList.add('selected');
+      }
+      deselect(){
+        this.path.classList.remove('selected');
+      }
+      isSelected(){
+        return this.path.classList.contains('selected');
+      }
+      destroy(){
+        this.path.remove(); this.labelEl.remove();
+      }
+    }
+
+    class Flowchart {
+      constructor(){
+        this.stage = $('#flowcanvas');
+        this.svg = $('#svg');
+        this.boxes = new Map();
+        this.conns = new Map();
+        this._boxCounter = 0; this._connCounter = 0;
+        this.pendingAnchor = null;
+        this._needsUpdate = false;
+        this._bindUI();
+        this.requestUpdate();
+      }
+      _bindUI(){
+        $('#addBoxBtn').addEventListener('click',()=>this.addBox());
+        $('#clearBtn').addEventListener('click',()=>this.clear());
+        $('#removeDuplicatesBtn').addEventListener('click',()=>this.removeDuplicateConnections());
+        $('#exportBtn').addEventListener('click',()=>this.export());
+        $('#importBtn').addEventListener('click',()=>this.importPrompt());
+
+        this.stage.addEventListener('click', (e)=>{
+          const a = e.target.closest('.anchor');
+          const box = e.target.closest('.box');
+          const line = e.target.closest('.conn-line');
+          
+          if(a){
+            const boxId = a.dataset.box; const pos = a.dataset.pos;
+            const box = this.boxes.get(boxId);
+            if(!this.pendingAnchor){
+              this.pendingAnchor = {box,pos};
+              a.style.background = 'var(--accent)';
+            } else {
+              const from = this.pendingAnchor; const to = {box,pos};
+              if(from.box.id === to.box.id){ 
+                this._clearPending(); 
+                this._showMessage('No puedes conectar una caja consigo misma', 'warning');
+                return; 
+              }
+              if(this._connectionExists(from.box,from.pos,to.box,to.pos)) { 
+                this._clearPending(); 
+                this._showMessage('Ya existe una conexión entre estas cajas', 'warning');
+                return; 
+              }
+              this.createConn(from.box, from.pos, to.box, to.pos);
+              this._clearPending();
+            }
+          } else if(box){
+            // Seleccionar/deseleccionar caja
+            this._clearAllSelections();
+            const boxId = box.dataset.id;
+            const boxObj = this.boxes.get(boxId);
+            if(boxObj) boxObj.select();
+          } else if(line){
+            // Seleccionar/deseleccionar línea
+            this._clearAllSelections();
+            const connId = line.dataset.connId;
+            const conn = this.conns.get(connId);
+            if(conn) conn.select();
+          } else {
+            // Click en área vacía - deseleccionar todo
+            this._clearAllSelections();
+          }
+        });
+
+        this.stage.addEventListener('dblclick', ()=> this._clearPending());
+
+        window.addEventListener('keydown', (e)=>{
+          if(e.key === 'Delete' || e.key === 'Backspace'){
+            this._deleteSelected();
+          }
+        });
+      }
+      _connectionExists(fromBox, fromAnchor, toBox, toAnchor){
+        for(const c of this.conns.values()){
+          // Verificar conexión exacta (mismo orden)
+          if(c.fromBox===fromBox && c.toBox===toBox){
+            return true;
+          }
+          // Verificar conexión inversa (orden opuesto)
+          if(c.fromBox===toBox && c.toBox===fromBox){
+            return true;
+          }
+        }
+        return false;
+      }
+      _clearPending(){
+        this.stage.querySelectorAll('.anchor').forEach(a=>a.style.background='');
+        this.pendingAnchor = null;
+      }
+      _clearAllSelections(){
+        for(const box of this.boxes.values()) box.deselect();
+        for(const conn of this.conns.values()) conn.deselect();
+      }
+      _deleteSelected(){
+        const selectedBoxes = Array.from(this.boxes.values()).filter(box => box.isSelected());
+        const selectedConns = Array.from(this.conns.values()).filter(conn => conn.isSelected());
+        
+        // Eliminar conexiones seleccionadas
+        for(const conn of selectedConns){
+          conn.destroy();
+          this.conns.delete(conn.id);
+        }
+        
+        // Eliminar cajas seleccionadas (esto también eliminará sus conexiones)
+        for(const box of selectedBoxes){
+          // Eliminar todas las conexiones que involucran esta caja
+          const connsToDelete = Array.from(this.conns.values()).filter(conn => 
+            conn.fromBox === box || conn.toBox === box
+          );
+          for(const conn of connsToDelete){
+            conn.destroy();
+            this.conns.delete(conn.id);
+          }
+          
+          box.destroy();
+          this.boxes.delete(box.id);
+        }
+        
+        if(selectedBoxes.length > 0 || selectedConns.length > 0){
+          this.requestUpdate();
+          this._updateStats();
+        }
+      }
+      addBox(x=60,y=60,title=''){
+        const id = `b${++this._boxCounter}`;
+        const b = new Box(this,id,x + this._boxCounter*8, y + this._boxCounter*6, title || `Caja ${this._boxCounter}`);
+        this.boxes.set(id,b);
+        this.requestUpdate(); this._updateStats();
+        return b;
+      }
+      createConn(fromBox, fromAnchor, toBox, toAnchor){
+        const id = `c${++this._connCounter}`;
+        const conn = new Connector(this,id,fromBox,fromAnchor,toBox,toAnchor);
+        this.conns.set(id,conn);
+        this.requestUpdate(); this._updateStats();
+        return conn;
+      }
+      requestUpdate(){
+        if(this._needsUpdate) return; this._needsUpdate = true;
+        requestAnimationFrame(()=>{ this._needsUpdate=false; this._render(); });
+      }
+      _render(){
+        for(const conn of this.conns.values()) conn.update();
+      }
+      _updateStats(){
+        $('#boxCount').textContent = this.boxes.size;
+        $('#connCount').textContent = this.conns.size;
+      }
+      showAlignmentGuides(draggingBox){
+        this.hideAlignmentGuides();
+        
+        const draggingCenterX = draggingBox.x + draggingBox.w / 2;
+        const draggingCenterY = draggingBox.y + draggingBox.h / 2;
+        const draggingLeft = draggingBox.x;
+        const draggingRight = draggingBox.x + draggingBox.w;
+        const draggingTop = draggingBox.y;
+        const draggingBottom = draggingBox.y + draggingBox.h;
+        
+        const snapThreshold = 10; // Píxeles de tolerancia para el snap
+        
+        // Verificar alineación con otras cajas
+        for(const box of this.boxes.values()){
+          if(box === draggingBox) continue;
+          
+          const boxCenterX = box.x + box.w / 2;
+          const boxCenterY = box.y + box.h / 2;
+          const boxLeft = box.x;
+          const boxRight = box.x + box.w;
+          const boxTop = box.y;
+          const boxBottom = box.y + box.h;
+          
+          // Alineación vertical (mismo centro X)
+          if(Math.abs(draggingCenterX - boxCenterX) < snapThreshold){
+            this._createVerticalGuide(boxCenterX);
+            // Snap automático
+            draggingBox.x = boxCenterX - draggingBox.w / 2;
+          }
+          // Alineación horizontal (mismo centro Y)
+          else if(Math.abs(draggingCenterY - boxCenterY) < snapThreshold){
+            this._createHorizontalGuide(boxCenterY);
+            // Snap automático
+            draggingBox.y = boxCenterY - draggingBox.h / 2;
+          }
+          // Alineación de bordes izquierdos
+          else if(Math.abs(draggingLeft - boxLeft) < snapThreshold){
+            this._createVerticalGuide(boxLeft);
+            draggingBox.x = boxLeft;
+          }
+          // Alineación de bordes derechos
+          else if(Math.abs(draggingRight - boxRight) < snapThreshold){
+            this._createVerticalGuide(boxRight);
+            draggingBox.x = boxRight - draggingBox.w;
+          }
+          // Alineación de bordes superiores
+          else if(Math.abs(draggingTop - boxTop) < snapThreshold){
+            this._createHorizontalGuide(boxTop);
+            draggingBox.y = boxTop;
+          }
+          // Alineación de bordes inferiores
+          else if(Math.abs(draggingBottom - boxBottom) < snapThreshold){
+            this._createHorizontalGuide(boxBottom);
+            draggingBox.y = boxBottom - draggingBox.h;
+          }
+        }
+      }
+      _createVerticalGuide(x){
+        const guide = document.createElement('div');
+        guide.className = 'alignment-guide vertical';
+        guide.style.left = x + 'px';
+        guide.style.top = '0px';
+        guide.style.height = '100%';
+        this.stage.appendChild(guide);
+      }
+      _createHorizontalGuide(y){
+        const guide = document.createElement('div');
+        guide.className = 'alignment-guide horizontal';
+        guide.style.top = y + 'px';
+        guide.style.left = '0px';
+        guide.style.width = '100%';
+        this.stage.appendChild(guide);
+      }
+      hideAlignmentGuides(){
+        const guides = this.stage.querySelectorAll('.alignment-guide');
+        guides.forEach(guide => guide.remove());
+      }
+      _showMessage(text, type = 'info'){
+        // Crear mensaje temporal
+        const message = document.createElement('div');
+        message.style.cssText = `
+          position: fixed; top: 20px; right: 20px; z-index: 10000;
+          background: ${type === 'warning' ? '#ff4444' : '#22c55e'};
+          color: white; padding: 12px 16px; border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          font-size: 14px; font-weight: 500;
+          transform: translateX(100%); transition: transform 0.3s ease;
+        `;
+        message.textContent = text;
+        document.body.appendChild(message);
+        
+        // Animar entrada
+        setTimeout(() => message.style.transform = 'translateX(0)', 10);
+        
+        // Remover después de 3 segundos
+        setTimeout(() => {
+          message.style.transform = 'translateX(100%)';
+          setTimeout(() => message.remove(), 300);
+        }, 3000);
+      }
+      removeDuplicateConnections(){
+        const seen = new Set();
+        const toRemove = [];
+        
+        for(const conn of this.conns.values()){
+          const key1 = `${conn.fromBox.id}-${conn.toBox.id}`;
+          const key2 = `${conn.toBox.id}-${conn.fromBox.id}`;
+          
+          if(seen.has(key1) || seen.has(key2)){
+            toRemove.push(conn);
+          } else {
+            seen.add(key1);
+            seen.add(key2);
+          }
+        }
+        
+        for(const conn of toRemove){
+          conn.destroy();
+          this.conns.delete(conn.id);
+        }
+        
+        if(toRemove.length > 0){
+          this.requestUpdate();
+          this._updateStats();
+          this._showMessage(`Se eliminaron ${toRemove.length} conexiones duplicadas`, 'info');
+        }
+      }
+      clear(){
+        for(const b of this.boxes.values()) b.destroy(); this.boxes.clear();
+        for(const c of this.conns.values()) c.destroy(); this.conns.clear();
+        this._boxCounter = 0; this._connCounter = 0; this.requestUpdate(); this._updateStats();
+      }
+     
+      export(){
+        const data = {
+          boxes:Array.from(this.boxes.values()).map(b=>b.serialize()),
+          conns:Array.from(this.conns.values()).map(c=>c.serialize())
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)],{type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'flowchart.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      importPrompt(){
+        const txt = prompt('Pega JSON de flujo para importar:');
+        if(!txt) return;
+        try{
+          const obj = JSON.parse(txt);
+          this._import(obj);
+        }catch(err){
+          alert('JSON inválido');
+        }
+      }
+      _import(obj){
+        this.clear();
+        if(obj.boxes){
+          for(const b of obj.boxes){
+            const nb = this.addBox(b.x,b.y,b.title);
+            nb.x=b.x; nb.y=b.y;
+            nb.updateDOM();
+          }
+        }
+        const idToBox = new Map();
+        for(const b of this.boxes.values()) idToBox.set(b.id,b);
+        if(obj.conns){
+          for(const c of obj.conns){
+            const from = idToBox.get(c.from);
+            const to = idToBox.get(c.to);
+            if(from && to && !this._connectionExists(from,c.fromAnchor,to,c.toAnchor)){
+              this.createConn(from,c.fromAnchor,to,c.toAnchor);
+            }
+          }
+        }
+        this.requestUpdate();
+      }
+    }
+
+    // Instanciar y demo
+    const FLOW = new Flowchart();
+    const a = FLOW.addBox(80,80,'Inicio');
+    a.setHeader('PASO 1');
+    a.setBody('Iniciar proceso');
+    a.setFooter('Estado: Activo');
+    
+    const b = FLOW.addBox(320,120,'Proceso');
+    b.setHeader('PASO 2');
+    b.setBody('Procesar datos');
+    b.setFooter('Estado: En progreso');
+    
+    const c = FLOW.addBox(560,240,'Fin');
+    c.setHeader('PASO 3');
+    c.setBody('Finalizar');
+    c.setFooter('Estado: Completado');
+    
+    FLOW.createConn(a,'right',b,'left');
+    FLOW.createConn(b,'right',c,'left');
+    
+    // Limpiar duplicados al inicializar
+    FLOW.removeDuplicateConnections();
+    FLOW.requestUpdate();
+  </script>
+</body>
+</html>

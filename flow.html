@@ -1,0 +1,93 @@
+<script>
+class Node {
+    constructor(id, x, y, color) {
+      this.id = id;
+      this.x = x;
+      this.y = y;
+      this.color = color || "#888";
+      this.width = 80;
+      this.height = 50;
+    }
+  
+    draw(ctx) {
+      ctx.fillStyle = this.color;
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(this.id, this.x + this.width / 2, this.y + this.height / 2);
+    }
+  
+    getCenter() {
+      return { x: this.x + this.width / 2, y: this.y + this.height / 2 };
+    }
+  }
+  
+  class Connection {
+    constructor(fromNode, toNode) {
+      this.fromNode = fromNode;
+      this.toNode = toNode;
+    }
+  
+    draw(ctx) {
+      const from = this.fromNode.getCenter();
+      const to = this.toNode.getCenter();
+  
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+    }
+  }
+  
+  class FlowDiagram {
+    constructor(canvasId) {
+      this.canvas = document.getElementById(canvasId);
+      this.ctx = this.canvas.getContext("2d");
+      this.nodes = [];
+      this.connections = [];
+    }
+  
+    addNode(node) {
+      this.nodes.push(node);
+      this.render();
+    }
+  
+    connect(fromNode, toNode) {
+      this.connections.push(new Connection(fromNode, toNode));
+      this.render();
+    }
+  
+    render() {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      for (let conn of this.connections) conn.draw(this.ctx);
+      for (let node of this.nodes) node.draw(this.ctx);
+    }
+  }
+  
+</script>
+<canvas id="flowCanvas" width="600" height="400" style="border:1px solid #ccc"></canvas>
+<script>
+const flow = new FlowDiagram("flowCanvas");
+
+// Crear nodos
+const A = new Node("A", 50, 150, "blue");
+const B = new Node("B", 200, 80, "purple");
+const C = new Node("C", 200, 220, "purple");
+const D = new Node("D", 400, 150, "pink");
+
+// Añadir nodos al diagrama
+flow.addNode(A);
+flow.addNode(B);
+flow.addNode(C);
+flow.addNode(D);
+
+// Conexiones
+flow.connect(A, B);
+flow.connect(A, C);
+flow.connect(B, D);
+flow.connect(C, D);
+</script>

@@ -5,7 +5,11 @@
 <title>Flow Editor Final</title>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; }
-.flow-box, .subflow-box { border: 2px solid #333; border-radius: 8px; padding: 10px; margin: 10px; cursor: pointer; display: inline-block; min-width: 150px; vertical-align: top; background: #f9f9f9; }
+.flow-box, .subflow-box {
+  border: 2px solid #333; border-radius: 8px; padding: 10px;
+  margin: 10px; cursor: pointer; display: inline-block;
+  min-width: 150px; vertical-align: top; background: #f9f9f9;
+}
 .flow-box:hover, .subflow-box:hover { background: #e9e9e9; }
 .editor { border: 2px solid #666; padding: 10px; margin-top: 20px; border-radius: 8px; }
 .step { border: 1px dashed #666; margin: 10px 0; padding: 8px; border-radius: 6px; }
@@ -20,7 +24,7 @@ button { margin-top: 5px; }
 
 <div>
   <input id="flowName" placeholder="Nombre del flow">
-  <input id="flowId" type="number" placeholder="ID">
+  <input id="flowId" placeholder="ID (ej: 1001)">
   <select id="flowType">
     <option value="main">main</option>
     <option value="subflow">subflow</option>
@@ -56,11 +60,11 @@ class FlowEditorFinal {
 
   createFlow(){
     let name = document.getElementById("flowName").value.trim();
-    let id = Number(document.getElementById("flowId").value.trim());
+    let id = parseInt(document.getElementById("flowId").value.trim());
     let type = document.getElementById("flowType").value.trim();
     let triggers = document.getElementById("flowTriggers").value.trim();
 
-    if(!name || isNaN(id)){ alert("Debes ingresar nombre e ID numérico válido"); return; }
+    if(!name || isNaN(id)){ alert("Debes ingresar nombre e ID numérico"); return; }
 
     this.data[name] = {
       type,
@@ -92,11 +96,12 @@ class FlowEditorFinal {
     this.currentEditing = name;
     let flow = this.data[name];
     this.editorContainer.innerHTML=`<h3>Editar ${name} (${flow.type})</h3>
-      ID: <input type="number" value="${flow.id}" onchange="editor.data['${name}'].id=Number(this.value); editor.renderJSON()"><br>
-      ${flow.type==="main"?`Triggers: <input value="${flow.triggers?flow.triggers.join(','):""}" onchange="editor.data['${name}'].triggers=this.value.split(','); editor.renderJSON()"><br>`:""}
+      ID: <input value="${flow.id}" onchange="editor.data['${name}'].id=parseInt(this.value)||0; editor.renderJSON()"><br>
+      ${flow.type==="main"?`Triggers: <input value="${flow.triggers?flow.triggers.join(','):""}" onchange="editor.data['${name}'].triggers=this.value.split(',').map(t=>t.trim()); editor.renderJSON()"><br>`:""}
       <button onclick="editor.addStep('${name}')">➕ Step</button><hr>`;
 
-    flow.steps.forEach((s,i)=> this.renderStep(name, s, i));
+    flow.steps.forEach((s,i)=>{ this.renderStep(name, s, i); });
+
     this.renderJSON();
   }
 
@@ -111,7 +116,7 @@ class FlowEditorFinal {
         <option value="subflow" ${step.type==="subflow"?"selected":""}>Subflow</option>
       </select><br>
       Pregunta: <textarea onchange="editor.data['${flowName}'].steps[${index}].question=this.value; editor.renderJSON()">${step.question}</textarea><br>
-      Key: <input value="${step.key ?? ""}" onchange="editor.data['${flowName}'].steps[${index}].key=this.value.trim()===''?null:this.value; editor.renderJSON()"><br>
+      Key: <input value="${step.key||""}" onchange="editor.data['${flowName}'].steps[${index}].key=this.value||null; editor.renderJSON()"><br>
     `;
 
     // Si tipo options
@@ -120,7 +125,8 @@ class FlowEditorFinal {
         let ul = document.createElement("ul");
         for(let [opt, vals] of Object.entries(step.options)){
           let li = document.createElement("li");
-          li.innerHTML = `"${opt}" : [${vals.map(v=>'"'+v+'"').join(", ")}] <button onclick="editor.deleteOption('${flowName}', ${index}, '${opt}')">🗑️</button>`;
+          li.innerHTML = `"${opt}" : [${vals.map(v=>'"'+v+'"').join(", ")}] 
+            <button onclick="editor.deleteOption('${flowName}', ${index}, '${opt}')">🗑️</button>`;
           ul.appendChild(li);
         }
         stepDiv.appendChild(ul);
@@ -141,7 +147,8 @@ class FlowEditorFinal {
         let ul = document.createElement("ul");
         for(let [subId, vals] of Object.entries(step.subflows)){
           let li = document.createElement("li");
-          li.innerHTML = `"${subId}" : [${vals.map(v=>'"'+v+'"').join(", ")}] <button onclick="editor.deleteSubflow('${flowName}', ${index}, '${subId}')">🗑️</button>`;
+          li.innerHTML = `"${subId}" : [${vals.map(v=>'"'+v+'"').join(", ")}] 
+            <button onclick="editor.deleteSubflow('${flowName}', ${index}, '${subId}')">🗑️</button>`;
           ul.appendChild(li);
         }
         stepDiv.appendChild(ul);
@@ -151,14 +158,20 @@ class FlowEditorFinal {
       if(!availableSubflows.length){
         stepDiv.innerHTML += `<div class="red">⚠️ No hay subflows creados.</div>`;
       } else {
-        let subIdInput = `subId-${flowName}-${index}`;
-        let subValInput = `subVal-${flowName}-${index}`;
-        let options = availableSubflows.map(f => `<option value="${f.id}">${f.id}</option>`).join("");
-        stepDiv.innerHTML += `<div class="inline-inputs">
-          <select id="${subIdInput}">${options}</select>
-          <input id="${subValInput}" placeholder="Valores (ej: 1,cafe)">
-          <button onclick="editor.saveSubflow('${flowName}',${index},document.getElementById('${subIdInput}').value,document.getElementById('${subValInput}').value)">➕ Subflow</button>
-        </div>`;
+        // ⚠️ Filtrar los ya agregados en este step
+        let selectable = availableSubflows.filter(f => !(step.subflows && step.subflows[f.id]));
+        if(selectable.length){
+          let subIdInput = `subId-${flowName}-${index}`;
+          let subValInput = `subVal-${flowName}-${index}`;
+          let options = selectable.map(f => `<option value="${f.id}">${f.id}</option>`).join("");
+          stepDiv.innerHTML += `<div class="inline-inputs">
+            <select id="${subIdInput}">${options}</select>
+            <input id="${subValInput}" placeholder="Valores (ej: 1,cafe)">
+            <button onclick="editor.saveSubflow('${flowName}',${index},document.getElementById('${subIdInput}').value,document.getElementById('${subValInput}').value)">➕ Subflow</button>
+          </div>`;
+        } else {
+          stepDiv.innerHTML += `<div class="red">✅ Todos los subflows disponibles ya fueron agregados en este paso.</div>`;
+        }
       }
     }
 
@@ -169,8 +182,8 @@ class FlowEditorFinal {
   changeStepType(flowName, index, newType){
     let step = this.data[flowName].steps[index];
     step.type = newType;
-    if(newType==="options"){ delete step.subflows; step.options = {}; }
-    else if(newType==="subflow"){ delete step.options; step.subflows = {}; }
+    if(newType==="options"){ delete step.subflows; step.options=step.options||{}; }
+    else if(newType==="subflow"){ delete step.options; step.subflows=step.subflows||{}; }
     else { delete step.options; delete step.subflows; }
     this.editFlow(flowName);
   }
@@ -220,21 +233,14 @@ class FlowEditorFinal {
     this.editFlow(flowName);
   }
 
-  cleanData(){
-    let cleaned = JSON.parse(JSON.stringify(this.data));
-    for(let flow of Object.values(cleaned)){
-      flow.id = Number(flow.id); // asegurar número
-      flow.steps.forEach(s=>{
-        if(s.key==="" || s.key===undefined) s.key=null;
-        if(s.type!=="options") delete s.options;
-        if(s.type!=="subflow") delete s.subflows;
-      });
-    }
-    return cleaned;
-  }
-
   renderJSON(){
-    this.output.textContent=JSON.stringify(this.cleanData(),null,2);
+    // Serialización: id como número, key vacío como null
+    let cleanData = JSON.parse(JSON.stringify(this.data, (key, value)=>{
+      if(key==="id") return Number(value);
+      if(key==="key" && (value==="" || value===undefined)) return null;
+      return value;
+    }, 2));
+    this.output.textContent=JSON.stringify(cleanData,null,2);
     this.renderFlows();
   }
 }
