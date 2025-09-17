@@ -1,7 +1,7 @@
 {
   "main": {
     "type": "main",
-    "id": 1001,
+    "id": "1001",
     "triggers": [
       "hola",
       "pedido",
@@ -10,25 +10,27 @@
     "steps": [
       {
         "step": 1,
+        "type": "question",
         "question": "👋 Hola, ¿cuál es tu nombre?",
         "key": "nombre"
       },
       {
         "step": 2,
-        "question": "¡Qué bien {{nombre}}! ¿Qué deseas pedir hoy?\n1. Café\n2. Helado\n3. Pizza",
+        "type": "subflow",
+        "question": "¡Qué bien {{nombre}}! ¿Qué deseas pedir hoy?\\n1. Café\\n2. Helado\\n3. Pizza",
         "key": "opcion",
         "subflows": {
+          "2001": [
+            "1",
+            "cafe"
+          ],
           "2002": [
             "2",
-            "café",
-            "helado",
-            "3",
             "helado"
           ],
           "2003": [
-            "4",
-            "pizza",
-            "piz"
+            "3",
+            "pizza"
           ]
         }
       }
@@ -36,11 +38,12 @@
   },
   "cafe": {
     "type": "subflow",
-    "id": 2001,
+    "id": "2001",
     "steps": [
       {
         "step": 1,
-        "question": "¿Qué tipo de café deseas?\n1. Latte\n2. Americano\n3. Cappuccino",
+        "type": "options",
+        "question": "¿Qué tipo de café deseas?\\n1. Latte\\n2. Americano\\n3. Cappuccino",
         "key": "tipoCafe",
         "options": {
           "latte": [
@@ -59,7 +62,8 @@
       },
       {
         "step": 2,
-        "question": "¿Con azúcar o sin azúcar?\n1. Con azúcar\n2. Sin azúcar",
+        "type": "options",
+        "question": "¿Con azúcar o sin azúcar?\\n1. Con azúcar\\n2. Sin azúcar",
         "key": "azucar",
         "options": {
           "con azucar": [
@@ -76,18 +80,20 @@
       },
       {
         "step": 3,
+        "type": "question",
         "question": "Gracias, tu café será preparado ☕️ {{tipoCafe}} {{azucar}}",
-        "key": null
+        "key": "null"
       }
     ]
   },
   "helado": {
     "type": "subflow",
-    "id": 2002,
+    "id": "2002",
     "steps": [
       {
         "step": 1,
-        "question": "¿Qué sabor de helado deseas?\n1. Chocolate\n2. Vainilla\n3. Fresa",
+        "type": "options",
+        "question": "¿Qué sabor de helado deseas?\\n1. Chocolate\\n2. Vainilla\\n3. Fresa",
         "key": "saborHelado",
         "options": {
           "chocolate": [
@@ -106,7 +112,8 @@
       },
       {
         "step": 2,
-        "question": "¿En qué lo quieres?\n1. Cono\n2. Vaso",
+        "type": "options",
+        "question": "¿En qué lo quieres?\\n1. Cono\\n2. Vaso",
         "key": "presentacion",
         "options": {
           "cono": [
@@ -121,18 +128,20 @@
       },
       {
         "step": 3,
+        "type": "question",
         "question": "Genial, tu helado está en camino 🍦 {{saborHelado}} en {{presentacion}}",
-        "key": null
+        "key": "null"
       }
     ]
   },
   "pizza": {
     "type": "subflow",
-    "id": 2003,
+    "id": "2003",
     "steps": [
       {
         "step": 1,
-        "question": "¿De qué sabor quieres la pizza?\n1. Pepperoni\n2. Hawaiana\n3. Margarita",
+        "type": "options",
+        "question": "¿De qué sabor quieres la pizza?\\n1. Pepperoni\\n2. Hawaiana\\n3. Margarita",
         "key": "saborPizza",
         "options": {
           "pepperoni": [
@@ -151,13 +160,13 @@
       },
       {
         "step": 2,
-        "question": "¿Qué tamaño deseas?\n1. Pequeña\n2. Mediana\n3. Grande",
+        "type": "options",
+        "question": "¿Qué tamaño deseas?\\n1. Pequeña\\n2. Mediana\\n3. Grande",
         "key": "tamanoPizza",
         "options": {
           "pequeña": [
             "1",
-            "pequeña",
-            "chica"
+            "pequeña"
           ],
           "mediana": [
             "2",
@@ -171,30 +180,10 @@
       },
       {
         "step": 3,
+        "type": "question",
         "question": "Perfecto {{nombre}} 🍕, tu pizza {{saborPizza}} tamaño {{tamanoPizza}} está en camino.",
-        "key": null
+        "key": "null"
       }
     ]
-  },
-  "Main2": {
-    "type": "main",
-    "id": 11,
-    "triggers": [
-      "tes",
-      "demo"
-    ],
-    "steps": [
-      {
-        "step": 1,
-        "question": "Que deseas pedir?",
-        "key": "nuevoCampo"
-      }
-    ]
-  },
-  "amburguesa": {
-    "type": "subflow",
-    "id": 21,
-    "triggers": [],
-    "steps": []
   }
 }

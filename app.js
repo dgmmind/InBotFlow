@@ -5,8 +5,10 @@ import { Manager } from './Manager.js';
 async function main() {
  
   // Iniciar servicio de WhatsApp
-  const service = new BaileysService();
-  await service.connect();
+ // const service = new BaileysService();
+  //await service.connect();
+
+  await Manager.getInstance().init()
 
   // Manejar cierre graceful
   process.on("SIGINT", async () => {

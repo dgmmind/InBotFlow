@@ -5,14 +5,13 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node FlowIa.js"
+    "start": "node app.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@google/genai": "^1.19.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.2",
     "baileys_helper": "^1.0.6",
     "dotenv": "^17.2.2",
