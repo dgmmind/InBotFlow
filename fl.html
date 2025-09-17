@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Chat Flow Builder Relacional</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+body { margin:0; font-family:sans-serif; background:#f6f6f6; }
+#toolbar { position:fixed; top:10px; left:10px; z-index:30; background:#fff; padding:8px 12px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+button { margin-right:5px; padding:6px 10px; border:1px solid #ccc; border-radius:6px; background:#fafafa; cursor:pointer; }
+svg#edges { position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:5; }
+.node { position:absolute; min-width:180px; background:#fff; border:2px solid #222; border-radius:8px; padding:12px 20px; box-shadow:0 4px 12px rgba(0,0,0,0.1); cursor:grab; z-index:10; user-select:none; }
+.node:active { cursor:grabbing; }
+.title { font-weight:600; margin-bottom:6px; font-size:14px; }
+.ports { position:absolute; top:0; height:100%; display:flex; flex-direction:column; justify-content:center; gap:8px; pointer-events:none; }
+.ports.left  { left:0; align-items:flex-start; padding-left:4px; }
+.ports.right { right:0; align-items:flex-end;  padding-right:4px; }
+.port { width:12px; height:12px; border-radius:50%; background:#444; pointer-events:auto; position:relative; }
+.port:hover { background:#0ca5ff; }
+#jsonOutput { position:fixed; bottom:10px; left:10px; right:10px; background:#fff; border:1px solid #ccc; border-radius:8px; padding:8px; font-size:12px; max-height:220px; overflow:auto; white-space:pre; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="addTrigger">➕ Trigger</button>
+  <button id="addPregunta">➕ Pregunta</button>
+  <button id="addDecision">➕ Decision</button>
+  <button id="addSubflow">➕ Subflow/Action</button>
+  <button id="exportJson">📦 Exportar JSON</button>
+</div>
+
+<svg id="edges"></svg>
+<pre id="jsonOutput"></pre>
+
+<script>
+const svg = document.getElementById("edges");
+let connections = [];
+let selectedPort = null, tempPath = null;
+
+let flowData = {};
+let nodeCounter = 1000;
+let stepCounter = 1;
+let subflowCounter = 2000;
+
+// ---- Crear nodo genérico ----
+function createNode(x,y,type,label,key){
+  const node = document.createElement("div");
+  node.className="node";
+  node.style.left = x+"px";
+  node.style.top = y+"px";
+  node.dataset.type = type;
+  node.dataset.id = nodeCounter++;
+
+  const title = document.createElement("div");
+  title.className="title";
+  title.textContent = label;
+  node.appendChild(title);
+
+  // Input port (excepto trigger)
+  if(type !== "trigger"){
+    const left = document.createElement("div");
+    left.className = "ports left";
+    const inPort = document.createElement("div");
+    inPort.className="port";
+    inPort.dataset.type="in";
+    inPort.dataset.side="left";
+    enablePort(inPort,node);
+    left.appendChild(inPort);
+    node.appendChild(left);
+  }
+
+  // Output port
+  const right = document.createElement("div");
+  right.className = "ports right";
+  const out = document.createElement("div");
+  out.className="port";
+  out.dataset.type="out";
+  out.dataset.side="right";
+  enablePort(out,node);
+  right.appendChild(out);
+  node.appendChild(right);
+
+  document.body.appendChild(node);
+
+  // Guardar en flowData según tipo
+  if(type==="trigger"){
+    flowData["main"] = {
+      type:"main",
+      id: node.dataset.id,
+      triggers: ["hola","pedido","quiero"],
+      steps: []
+    };
+  } else {
+    // solo agregamos como nodo independiente, no se vincula aún
+    flowData[node.dataset.id] = {
+      type: type,
+      id: node.dataset.id,
+      question: label,
+      key: key || null,
+      steps: []
+    };
+  }
+
+  updateOutput();
+  enableDrag(node);
+  return node;
+}
+
+// ---- Crear nodo decision ----
+function createDecisionNode(x,y,question){
+  const node = createNode(x,y,"decision",question);
+
+  // solo crea step con subflows vacío
+  flowData[node.dataset.id] = {
+    type: "decision",
+    id: node.dataset.id,
+    question: question,
+    key: "opcion",
+    subflows: {}
+  };
+
+  updateOutput();
+  return node;
+}
+
+// ---- Crear nodo subflow/action ----
+function createSubflowNode(x,y,name,question,key){
+  const node = createNode(x,y,"subflow",question,key);
+
+  if(!flowData[name]){
+    flowData[name] = { type:"subflow", id: subflowCounter++, steps: [] };
+  }
+
+  flowData[name].steps.push({
+    step: stepCounter++,
+    question: question,
+    key: key || null
+  });
+
+  // Cuando se conecte a un decision node se generará la relación
+  updateOutput();
+  return node;
+}
+
+// ---- Drag ----
+function enableDrag(node){
+  let ox=0,oy=0;
+  node.addEventListener("mousedown",e=>{
+    if(e.target.classList.contains("port")) return;
+    ox = e.clientX - node.offsetLeft;
+    oy = e.clientY - node.offsetTop;
+    node.style.cursor="grabbing";
+    function move(ev){
+      node.style.left = (ev.clientX-ox)+"px";
+      node.style.top = (ev.clientY-oy)+"px";
+      updateAllPaths();
+    }
+    function stop(){
+      document.removeEventListener("mousemove",move);
+      document.removeEventListener("mouseup",stop);
+      node.style.cursor="grab";
+    }
+    document.addEventListener("mousemove",move);
+    document.addEventListener("mouseup",stop);
+  });
+}
+
+// ---- Ports / Conexión ----
+function enablePort(port,node){
+  port.addEventListener("click",e=>{
+    e.stopPropagation();
+    if(!selectedPort){
+      if(port.dataset.type!=="out") return;
+      selectedPort={port,node};
+      const start=connectionPointFor(port,node);
+      tempPath=createPath(start.x,start.y,start.x,start.y);
+      function follow(ev){
+        if(tempPath){
+          const s=connectionPointFor(selectedPort.port,selectedPort.node);
+          updateCurve(tempPath,s.x,s.y,ev.clientX,ev.clientY);
+        }
+      }
+      function stop(){document.removeEventListener("mousemove",follow);document.removeEventListener("mouseup",stop);}
+      document.addEventListener("mousemove",follow);
+      document.addEventListener("mouseup",stop);
+    }else{
+      const from=selectedPort.port,to=port;
+      if(from===to){cleanupTemp();return;}
+      if(from.dataset.type==="out"&&to.dataset.type==="in"){
+        if(!isDuplicateConnection(from,to)){
+          connections.push([from,to]);
+          updateAllPaths();
+
+          // ---- Registrar relación en JSON ----
+          const fromNode = selectedPort.node;
+          const toNode = to.closest(".node");
+
+          // Trigger → pregunta
+          if(fromNode.dataset.type==="trigger" && toNode.dataset.type==="pregunta"){
+            if(flowData["main"]){
+              flowData["main"].steps.push({
+                step: stepCounter++,
+                question: toNode.dataset.question || toNode.querySelector(".title").textContent,
+                key: toNode.dataset.key || "key"+stepCounter
+              });
+            }
+          }
+
+          // Decision → subflow
+          if(fromNode.dataset.type==="decision" && toNode.dataset.type==="subflow"){
+            const step = flowData[fromNode.dataset.id];
+            if(step && step.subflows && !step.subflows[toNode.dataset.id]){
+              const index = Object.keys(step.subflows).length + 1;
+              step.subflows[toNode.dataset.id] = [String(index), toNode.querySelector(".title").textContent.toLowerCase()];
+            }
+          }
+
+        }
+      }
+      cleanupTemp();
+      updateOutput();
+    }
+  });
+}
+
+// ---- Helpers ----
+function isDuplicateConnection(a,b){return connections.some(([x,y])=>x===a && y===b);}
+function connectionPointFor(port,node){
+  const rect=port.getBoundingClientRect();
+  const nrect=node.getBoundingClientRect();
+  const y=rect.top+rect.height/2;
+  return (port.dataset.side==="right") ? {x:nrect.left+nrect.width,y} : {x:nrect.left,y};
+}
+function createPath(x1,y1,x2,y2){
+  const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("stroke","#666");
+  p.setAttribute("stroke-width","2.5");
+  p.setAttribute("fill","none");
+  updateCurve(p,x1,y1,x2,y2);
+  svg.appendChild(p);
+  return p;
+}
+function updateCurve(path,x1,y1,x2,y2){
+  const dx=Math.max(40,Math.abs(x2-x1)*0.45);
+  path.setAttribute("d",`M ${x1},${y1} C ${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`);
+}
+function cleanupTemp(){ if(tempPath && tempPath.parentNode) tempPath.parentNode.removeChild(tempPath); tempPath=null; selectedPort=null; }
+function updateAllPaths(){
+  svg.innerHTML="";
+  connections.forEach(([out,inP])=>{
+    const oNode=out.closest(".node"), iNode=inP.closest(".node");
+    const p1=connectionPointFor(out,oNode), p2=connectionPointFor(inP,iNode);
+    createPath(p1.x,p1.y,p2.x,p2.y);
+  });
+}
+
+// ---- Toolbar ----
+let posX=80,posY=120;
+document.getElementById("addTrigger").onclick = ()=>{ createNode(posX,posY,"trigger","👋 Trigger"); posX+=220; };
+document.getElementById("addPregunta").onclick = ()=>{ createNode(posX,posY,"pregunta","Hola, ¿cuál es tu nombre?","nombre"); posX+=220; };
+document.getElementById("addDecision").onclick = ()=>{ createDecisionNode(posX,posY,"¿Qué deseas pedir hoy?"); posX+=220; };
+document.getElementById("addSubflow").onclick = ()=>{
+  const name = prompt("Nombre del subflow (ej: cafe, helado, pizza):");
+  const question = prompt("Pregunta del subflow:");
+  const key = prompt("Key (opcional):");
+  createSubflowNode(posX,posY,name,question,key);
+  posX+=220;
+};
+document.getElementById("exportJson").onclick = ()=>{ alert(JSON.stringify(flowData,null,2)); };
+
+function updateOutput(){
+  document.getElementById("jsonOutput").textContent = JSON.stringify(flowData,null,2);
+}
+
+updateAllPaths();
+document.addEventListener("click",e=>{if(!e.target.classList.contains("port")) cleanupTemp();});
+</script>
+</body>
+</html>

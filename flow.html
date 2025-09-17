@@ -1,93 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Chat Flow Builder - Secuencial Corregido</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+body { margin:0; font-family:sans-serif; background:#f6f6f6; }
+#toolbar { position:fixed; top:10px; left:10px; z-index:30; background:#fff; padding:8px 12px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+button { margin-right:5px; padding:6px 10px; border:1px solid #ccc; border-radius:6px; background:#fafafa; cursor:pointer; }
+svg#edges { position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:5; }
+
+.node { position:absolute; min-width:180px; background:#fff; border:2px solid #222; border-radius:8px; padding:12px 20px; box-shadow:0 4px 12px rgba(0,0,0,0.1); cursor:grab; z-index:10; user-select:none; }
+.node:active { cursor:grabbing; }
+.title { font-weight:600; margin-bottom:6px; font-size:14px; }
+.ports { position:absolute; top:0; height:100%; display:flex; flex-direction:column; justify-content:center; gap:8px; pointer-events:none; }
+.ports.left  { left:0; align-items:flex-start; padding-left:4px; }
+.ports.right { right:0; align-items:flex-end;  padding-right:4px; }
+.port { width:12px; height:12px; border-radius:50%; background:#444; pointer-events:auto; position:relative; }
+.port:hover { background:#0ca5ff; }
+.port-label { position:absolute; top:-18px; font-size:12px; background:#fff; padding:1px 4px; border-radius:4px; border:1px solid #ccc; white-space:nowrap; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="addTrigger">➕ Trigger</button>
+  <button id="addPregunta">➕ Pregunta</button>
+  <button id="addDecision">➕ Decision</button>
+  <button id="addAction">➕ Action</button>
+</div>
+
+<svg id="edges"></svg>
+
 <script>
-class Node {
-    constructor(id, x, y, color) {
-      this.id = id;
-      this.x = x;
-      this.y = y;
-      this.color = color || "#888";
-      this.width = 80;
-      this.height = 50;
-    }
-  
-    draw(ctx) {
-      ctx.fillStyle = this.color;
-      ctx.fillRect(this.x, this.y, this.width, this.height);
-      ctx.fillStyle = "#fff";
-      ctx.font = "20px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(this.id, this.x + this.width / 2, this.y + this.height / 2);
-    }
-  
-    getCenter() {
-      return { x: this.x + this.width / 2, y: this.y + this.height / 2 };
-    }
+const svg = document.getElementById("edges");
+let connections = [];
+let selectedPort = null, tempPath = null;
+
+/* Crear nodo */
+function createNode(x,y,type,label,outputs=1,outputLabels=[]){
+  const node = document.createElement("div");
+  node.className="node";
+  node.style.left=x+"px";
+  node.style.top=y+"px";
+  node.dataset.type=type;
+
+  const title=document.createElement("div");
+  title.className="title";
+  title.textContent=label;
+  node.appendChild(title);
+
+  // input (excepto Trigger)
+  const left=document.createElement("div");
+  left.className="ports left";
+  if(type!=="trigger"){
+    const inPort=document.createElement("div");
+    inPort.className="port";
+    inPort.dataset.type="in";
+    inPort.dataset.side="left";
+    enablePort(inPort,node);
+    left.appendChild(inPort);
   }
-  
-  class Connection {
-    constructor(fromNode, toNode) {
-      this.fromNode = fromNode;
-      this.toNode = toNode;
+  node.appendChild(left);
+
+  // outputs
+  const right=document.createElement("div");
+  right.className="ports right";
+  for(let i=0;i<outputs;i++){
+    const out=document.createElement("div");
+    out.className="port";
+    out.dataset.type="out";
+    out.dataset.side="right";
+    out.dataset.index=i;
+    enablePort(out,node);
+    if(outputLabels[i]){
+      const lbl=document.createElement("div");
+      lbl.className="port-label";
+      lbl.textContent=outputLabels[i];
+      out.appendChild(lbl);
     }
-  
-    draw(ctx) {
-      const from = this.fromNode.getCenter();
-      const to = this.toNode.getCenter();
-  
-      ctx.strokeStyle = "#555";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-    }
+    right.appendChild(out);
   }
-  
-  class FlowDiagram {
-    constructor(canvasId) {
-      this.canvas = document.getElementById(canvasId);
-      this.ctx = this.canvas.getContext("2d");
-      this.nodes = [];
-      this.connections = [];
+  node.appendChild(right);
+
+  document.body.appendChild(node);
+  enableDrag(node);
+  return node;
+}
+
+/* Drag */
+function enableDrag(node){
+  let ox=0,oy=0;
+  node.addEventListener("mousedown",e=>{
+    if(e.target.classList.contains("port")) return;
+    ox=e.clientX-node.offsetLeft; oy=e.clientY-node.offsetTop;
+    node.style.cursor="grabbing";
+    function move(ev){
+      node.style.left=(ev.clientX-ox)+"px";
+      node.style.top=(ev.clientY-oy)+"px";
+      updateAllPaths();
     }
-  
-    addNode(node) {
-      this.nodes.push(node);
-      this.render();
+    function stop(){
+      document.removeEventListener("mousemove",move);
+      document.removeEventListener("mouseup",stop);
+      node.style.cursor="grab";
     }
-  
-    connect(fromNode, toNode) {
-      this.connections.push(new Connection(fromNode, toNode));
-      this.render();
+    document.addEventListener("mousemove",move);
+    document.addEventListener("mouseup",stop);
+  });
+}
+
+/* Ports */
+function enablePort(port,node){
+  port.addEventListener("click",e=>{
+    e.stopPropagation();
+    if(!selectedPort){
+      if(port.dataset.type!=="out") return;
+      selectedPort={port,node};
+      const start=connectionPointFor(port,node);
+      tempPath=createPath(start.x,start.y,start.x,start.y);
+      function follow(ev){
+        if(tempPath){
+          const s=connectionPointFor(selectedPort.port,selectedPort.node);
+          updateCurve(tempPath,s.x,s.y,ev.clientX,ev.clientY);
+        }
+      }
+      function stop(){document.removeEventListener("mousemove",follow);document.removeEventListener("mouseup",stop);}
+      document.addEventListener("mousemove",follow);
+      document.addEventListener("mouseup",stop);
+    }else{
+      const from=selectedPort.port,to=port;
+      if(from===to){cleanupTemp();return;}
+      if(from.dataset.type==="out"&&to.dataset.type==="in"){
+        if(canConnect(from,to) && !isDuplicateConnection(from,to) && !isInUse(from) && !isInUse(to)){
+          connections.push([from,to]);
+          updateAllPaths();
+        }
+      }
+      cleanupTemp();
     }
-  
-    render() {
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      for (let conn of this.connections) conn.draw(this.ctx);
-      for (let node of this.nodes) node.draw(this.ctx);
-    }
-  }
-  
+  });
+}
+
+/* Validación lógica de conexión */
+function canConnect(fromPort,toPort){
+  const fromType=fromPort.closest(".node").dataset.type;
+  const toType  =toPort.closest(".node").dataset.type;
+
+  // Secuencia lógica de chatbot
+  if(fromType==="trigger" && (toType==="trigger" || toType==="action")) return false;
+  if(fromType==="pregunta" && toType==="trigger") return false;
+  if(fromType==="decision" && toType==="trigger") return false;
+  if(fromType==="action" && toType==="trigger") return false;
+
+  return true;
+}
+
+/* Helpers */
+function isDuplicateConnection(a,b){return connections.some(([x,y])=>x===a && y===b);}
+function isInUse(port){return connections.some(([x,y])=>x===port || y===port);}
+function connectionPointFor(port,node){
+  const rect=port.getBoundingClientRect();
+  const nrect=node.getBoundingClientRect();
+  const y=rect.top+rect.height/2;
+  return (port.dataset.side==="right")
+    ? {x:nrect.left+nrect.width,y}
+    : {x:nrect.left,y};
+}
+function createPath(x1,y1,x2,y2){
+  const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("stroke","#666");
+  p.setAttribute("stroke-width","2.5");
+  p.setAttribute("fill","none");
+  updateCurve(p,x1,y1,x2,y2);
+  svg.appendChild(p);
+  return p;
+}
+function updateCurve(path,x1,y1,x2,y2){
+  const dx=Math.max(40,Math.abs(x2-x1)*0.45);
+  path.setAttribute("d",`M ${x1},${y1} C ${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`);
+}
+function cleanupTemp(){ if(tempPath && tempPath.parentNode) tempPath.parentNode.removeChild(tempPath); tempPath=null; selectedPort=null; }
+function updateAllPaths(){
+  svg.innerHTML="";
+  connections.forEach(([out,inP])=>{
+    const oNode=out.closest(".node"), iNode=inP.closest(".node");
+    const p1=connectionPointFor(out,oNode), p2=connectionPointFor(inP,iNode);
+    createPath(p1.x,p1.y,p2.x,p2.y);
+  });
+}
+
+/* Toolbar */
+let posX=80,posY=120;
+document.getElementById("addTrigger").onclick=()=>{createNode(posX,posY,"trigger","👋 Trigger",1); posX+=220;};
+document.getElementById("addPregunta").onclick=()=>{createNode(posX,posY,"pregunta","❓ Pregunta",1,["Siguiente"]); posX+=220;};
+document.getElementById("addDecision").onclick=()=>{createNode(posX,posY,"decision","❓ Decision",2,["Opción 1","Opción 2"]); posX+=220;};
+document.getElementById("addAction").onclick=()=>{createNode(posX,posY,"action","⚡ Action",1); posX+=220;};
+
+// ---------------- Nodós ----------------
+
+// Trigger inicial
+const triggerNode = createNode(80,120,"trigger","👋 Usuario dice Hola",1);
+
+// Pregunta nombre
+const preguntaNombre = createNode(360,120,"pregunta","❓ ¿Cuál es tu nombre?",1,["Siguiente"]);
+
+// Decision menú principal: Café / Helado / Pizza
+const decisionMenu = createNode(640,120,"decision","¿Qué deseas pedir hoy?",3,["Café","Helado","Pizza"]);
+
+// ---------------- Camino Café ----------------
+const preguntaSaborCafe = createNode(900,60,"decision","¿Qué sabor de café deseas?",3,["Expreso","Americano","Capuccino"]);
+const actionCafe = createNode(1160,60,"action","⚡ Confirmar pedido Café");
+
+// ---------------- Camino Helado ----------------
+const preguntaSaborHelado = createNode(900,140,"decision","¿Qué sabor de helado deseas?",3,["Chocolate","Vainilla","Fresa"]);
+const preguntaRecipienteHelado = createNode(1160,140,"decision","¿En qué lo quieres?",2,["Cono","Vaso"]);
+const actionHelado = createNode(1400,140,"action","⚡ Confirmar pedido Helado");
+
+// ---------------- Camino Pizza ----------------
+const preguntaSaborPizza = createNode(900,220,"decision","¿De qué sabor quieres la pizza?",3,["Pepperoni","Hawaiana","Margarita"]);
+const preguntaTamanoPizza = createNode(1160,220,"decision","¿Qué tamaño deseas?",3,["Pequeña","Mediana","Grande"]);
+const actionPizza = createNode(1400,220,"action","⚡ Confirmar pedido Pizza");
+
+// ---------------- Conexiones ----------------
+
+// Trigger → Pregunta nombre
+connections.push([
+  triggerNode.querySelector(".ports.right .port"),
+  preguntaNombre.querySelector(".ports.left .port")
+]);
+
+// Pregunta nombre → Decision menú principal
+connections.push([
+  preguntaNombre.querySelector(".ports.right .port"),
+  decisionMenu.querySelector(".ports.left .port")
+]);
+
+// Decision menú principal → Café / Helado / Pizza
+connections.push([
+  decisionMenu.querySelectorAll(".ports.right .port")[0], // Café
+  preguntaSaborCafe.querySelector(".ports.left .port")
+]);
+connections.push([
+  decisionMenu.querySelectorAll(".ports.right .port")[1], // Helado
+  preguntaSaborHelado.querySelector(".ports.left .port")
+]);
+connections.push([
+  decisionMenu.querySelectorAll(".ports.right .port")[2], // Pizza
+  preguntaSaborPizza.querySelector(".ports.left .port")
+]);
+
+// Café → acción
+connections.push([
+  preguntaSaborCafe.querySelectorAll(".ports.right .port")[0], // Expreso
+  actionCafe.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaSaborCafe.querySelectorAll(".ports.right .port")[1], // Americano
+  actionCafe.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaSaborCafe.querySelectorAll(".ports.right .port")[2], // Capuccino
+  actionCafe.querySelector(".ports.left .port")
+]);
+
+// Helado → recipiente → acción
+connections.push([
+  preguntaSaborHelado.querySelectorAll(".ports.right .port")[0], // Chocolate
+  preguntaRecipienteHelado.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaSaborHelado.querySelectorAll(".ports.right .port")[1], // Vainilla
+  preguntaRecipienteHelado.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaSaborHelado.querySelectorAll(".ports.right .port")[2], // Fresa
+  preguntaRecipienteHelado.querySelector(".ports.left .port")
+]);
+
+connections.push([
+  preguntaRecipienteHelado.querySelectorAll(".ports.right .port")[0], // Cono
+  actionHelado.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaRecipienteHelado.querySelectorAll(".ports.right .port")[1], // Vaso
+  actionHelado.querySelector(".ports.left .port")
+]);
+
+// Pizza → tamaño → acción
+connections.push([
+  preguntaSaborPizza.querySelectorAll(".ports.right .port")[0], // Pepperoni
+  preguntaTamanoPizza.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaSaborPizza.querySelectorAll(".ports.right .port")[1], // Hawaiana
+  preguntaTamanoPizza.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaSaborPizza.querySelectorAll(".ports.right .port")[2], // Margarita
+  preguntaTamanoPizza.querySelector(".ports.left .port")
+]);
+
+connections.push([
+  preguntaTamanoPizza.querySelectorAll(".ports.right .port")[0], // Pequeña
+  actionPizza.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaTamanoPizza.querySelectorAll(".ports.right .port")[1], // Mediana
+  actionPizza.querySelector(".ports.left .port")
+]);
+connections.push([
+  preguntaTamanoPizza.querySelectorAll(".ports.right .port")[2], // Grande
+  actionPizza.querySelector(".ports.left .port")
+]);
+
+
+
+
+updateAllPaths();
+document.addEventListener("click",e=>{if(!e.target.classList.contains("port")) cleanupTemp();});
 </script>
-<canvas id="flowCanvas" width="600" height="400" style="border:1px solid #ccc"></canvas>
-<script>
-const flow = new FlowDiagram("flowCanvas");
-
-// Crear nodos
-const A = new Node("A", 50, 150, "blue");
-const B = new Node("B", 200, 80, "purple");
-const C = new Node("C", 200, 220, "purple");
-const D = new Node("D", 400, 150, "pink");
-
-// Añadir nodos al diagrama
-flow.addNode(A);
-flow.addNode(B);
-flow.addNode(C);
-flow.addNode(D);
-
-// Conexiones
-flow.connect(A, B);
-flow.connect(A, C);
-flow.connect(B, D);
-flow.connect(C, D);
-</script>
+</body>
+</html>
