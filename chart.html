@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Flowchart Conversacional Personalizable</title>
+  <style>
+    body {
+      background: #f9f9f9;
+      font-family: Arial, sans-serif;
+      display: flex;
+    }
+    #toolbar {
+      margin: 10px;
+      width: 300px;
+      overflow-y: auto;
+      height: 100vh;
+    }
+    #flowchart {
+      border: 1px solid #ccc;
+      background: white;
+      flex: 1;
+    }
+    .node {
+      cursor: grab;
+    }
+    text {
+      font-size: 12px;
+      fill: white;
+      font-weight: bold;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+    }
+    .connector {
+      stroke: #888;
+      stroke-width: 2;
+      fill: none;
+    }
+    .port {
+      fill: black;
+      cursor: crosshair;
+    }
+    .port:hover {
+      fill: red;
+    }
+    #chat-container {
+      width: 300px;
+      padding: 10px;
+      border-left: 1px solid #ccc;
+    }
+    #chat-output {
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    #chat-input {
+      width: 100%;
+      padding: 5px;
+    }
+    .highlighted {
+      stroke: red;
+      stroke-width: 4;
+    }
+    #node-form {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      background: white;
+    }
+    #node-form label {
+      display: block;
+      margin: 5px 0;
+    }
+    #node-form input, #node-form select {
+      width: 100%;
+      padding: 5px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+    #node-form button {
+      padding: 5px 10px;
+    }
+    #json-viewer {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      background: white;
+    }
+    #json-output {
+      width: 100%;
+      height: 200px;
+      font-family: monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="addNode">➕ Agregar Nodo Manual (sin JSON)</button>
+    <div id="node-form">
+      <h3>Crear Paso del Flujo</h3>
+      <label>ID del Paso:</label>
+      <input type="text" id="step-id" placeholder="Ej: main.step1">
+      <label>Mensaje del Bot:</label>
+      <input type="text" id="step-message" placeholder="Ej: ¡Hola! ¿Cómo te llamas?">
+      <label>Tipo de Paso:</label>
+      <select id="step-type">
+        <option value="input">Entrada de Texto (guardar respuesta)</option>
+        <option value="options">Opciones (elegir entre varias)</option>
+        <option value="final">Paso Final</option>
+      </select>
+      <label>Guardar Respuesta Como (si es Entrada):</label>
+      <input type="text" id="save-as" placeholder="Ej: userName">
+      <label>Opciones (si es Opciones, separar por comas):</label>
+      <input type="text" id="step-options" placeholder="Ej: helado,café">
+      <label>Siguiente ID (si no es Opciones):</label>
+      <input type="text" id="next-id" placeholder="Ej: main.step2">
+      <button id="save-step">Guardar Paso</button>
+    </div>
+    <div id="json-viewer">
+      <h3>JSON del Flujo</h3>
+      <textarea id="json-output" readonly placeholder="El JSON se actualizará aquí..."></textarea>
+    </div>
+  </div>
+  <svg id="flowchart" width="600" height="600"></svg>
+  <div id="chat-container">
+    <div id="chat-output"></div>
+    <input type="text" id="chat-input" placeholder="Escribe 'hola' para comenzar...">
+  </div>
+
+  <script>
+    const svg = document.getElementById("flowchart");
+    const addNodeBtn = document.getElementById("addNode");
+    const chatOutput = document.getElementById("chat-output");
+    const chatInput = document.getElementById("chat-input");
+    const stepIdInput = document.getElementById("step-id");
+    const stepMessageInput = document.getElementById("step-message");
+    const stepTypeSelect = document.getElementById("step-type");
+    const saveAsInput = document.getElementById("save-as");
+    const stepOptionsInput = document.getElementById("step-options");
+    const nextIdInput = document.getElementById("next-id");
+    const saveStepBtn = document.getElementById("save-step");
+    const jsonOutput = document.getElementById("json-output");
+
+    let nodes = [];
+    let connections = [];
+    let dragging = null;
+    let offsetX = 0, offsetY = 0;
+    let nodeCount = 0;
+    let pendingConnection = null;
+    let currentStep = null;
+    let variables = {};
+    let chatStarted = false;
+
+    // JSON dinámico para el flujo conversacional
+    let flowData = { flows: { main: { id: "main", steps: {} } } };
+
+    // Actualizar visualización del JSON
+    function updateJsonViewer() {
+      jsonOutput.value = JSON.stringify(flowData, null, 2);
+    }
+
+    // Crear nodo
+    function createNode(x, y, label, id, color = "purple") {
+      nodeCount++;
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute("class", "node");
+      group.dataset.id = id || `manual${nodeCount}`;
+
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", x);
+      rect.setAttribute("y", y);
+      rect.setAttribute("width", 120);
+      rect.setAttribute("height", 60);
+      rect.setAttribute("rx", 8);
+      rect.setAttribute("ry", 8);
+      rect.setAttribute("fill", color);
+      rect.setAttribute("stroke", "#222");
+      rect.setAttribute("stroke-width", 2);
+
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", x + 60);
+      text.setAttribute("y", y + 30);
+      text.textContent = label.length > 20 ? label.substring(0, 17) + "..." : label;
+
+      const portLeft = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      portLeft.setAttribute("cx", x);
+      portLeft.setAttribute("cy", y + 30);
+      portLeft.setAttribute("r", 5);
+      portLeft.setAttribute("class", "port");
+
+      const portRight = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      portRight.setAttribute("cx", x + 120);
+      portRight.setAttribute("cy", y + 30);
+      portRight.setAttribute("r", 5);
+      portRight.setAttribute("class", "port");
+
+      group.appendChild(rect);
+      group.appendChild(text);
+      group.appendChild(portLeft);
+      group.appendChild(portRight);
+      svg.appendChild(group);
+
+      const nodeData = {
+        id: group.dataset.id,
+        x,
+        y,
+        w: 120,
+        h: 60,
+        group,
+        rect,
+        text,
+        ports: { left: portLeft, right: portRight }
+      };
+      nodes.push(nodeData);
+
+      group.addEventListener("mousedown", e => {
+        if (e.target.classList.contains("port")) return;
+        dragging = nodeData;
+        offsetX = e.clientX - nodeData.x;
+        offsetY = e.clientY - nodeData.y;
+      });
+
+      [portLeft, portRight].forEach(port => {
+        port.addEventListener("click", () => handlePortClick(nodeData, port));
+      });
+
+      console.log(`Nodo creado: ${nodeData.id}`);
+      return nodeData;
+    }
+
+    // Clic en puerto para conectar
+    function handlePortClick(node, port) {
+      if (!pendingConnection) {
+        pendingConnection = { node, port };
+        port.setAttribute("fill", "red");
+      } else {
+        if (pendingConnection.node !== node) {
+          connect(pendingConnection.node, node, pendingConnection.port, port);
+          // Actualizar nextId u opciones en el JSON
+          const fromId = pendingConnection.node.id;
+          const toId = node.id;
+          const [fromFlowId, fromStepName] = fromId.split(".");
+          const flow = flowData.flows[fromFlowId];
+          if (flow && flow.steps[fromStepName]) {
+            const step = flow.steps[fromStepName];
+            if (step.options) {
+              // Añadir opción si no existe
+              if (!step.options.find(opt => opt.label === toId)) {
+                step.options.push({ label: toId, nextId: toId });
+              }
+            } else if (!step.saveAs && !step.isFinalStep) {
+              step.nextId = toId;
+            }
+            updateJsonViewer();
+          }
+        }
+        pendingConnection.port.setAttribute("fill", "black");
+        pendingConnection = null;
+      }
+    }
+
+    // Conectar nodos
+    function connect(n1, n2, port1, port2) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("class", "connector");
+      svg.insertBefore(path, svg.firstChild);
+
+      connections.push({ from: n1, to: n2, path, port1, port2 });
+      updateConnections();
+    }
+
+    // Actualizar conexiones
+    function updateConnections() {
+      connections.forEach(c => {
+        const startX = parseFloat(c.port1.getAttribute("cx"));
+        const startY = parseFloat(c.port1.getAttribute("cy"));
+        const endX = parseFloat(c.port2.getAttribute("cx"));
+        const endY = parseFloat(c.port2.getAttribute("cy"));
+        const midX = (startX + endX) / 2;
+
+        const d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+        c.path.setAttribute("d", d);
+      });
+    }
+
+    // Evento de mousemove para drag
+    svg.addEventListener("mousemove", e => {
+      if (dragging) {
+        dragging.x = e.clientX - offsetX;
+        dragging.y = e.clientY - offsetY;
+        dragging.rect.setAttribute("x", dragging.x);
+        dragging.rect.setAttribute("y", dragging.y);
+        dragging.text.setAttribute("x", dragging.x + dragging.w / 2);
+        dragging.text.setAttribute("y", dragging.y + dragging.h / 2);
+        dragging.ports.left.setAttribute("cx", dragging.x);
+        dragging.ports.left.setAttribute("cy", dragging.y + dragging.h / 2);
+        dragging.ports.right.setAttribute("cx", dragging.x + dragging.w);
+        dragging.ports.right.setAttribute("cy", dragging.y + dragging.h / 2);
+        updateConnections();
+      }
+    });
+
+    svg.addEventListener("mouseup", () => {
+      dragging = null;
+    });
+
+    // Agregar nodo manual (sin JSON)
+    addNodeBtn.addEventListener("click", () => {
+      const x = 100 + nodes.length * 140;
+      const y = 100 + (nodes.length % 3) * 100;
+      createNode(x, y, "Nodo Manual", null, randomColor());
+    });
+
+    // Guardar paso en el JSON
+    saveStepBtn.addEventListener("click", () => {
+      const stepId = stepIdInput.value.trim();
+      const message = stepMessageInput.value.trim();
+      const stepType = stepTypeSelect.value;
+      const saveAs = saveAsInput.value.trim();
+      const optionsStr = stepOptionsInput.value.trim();
+      const nextId = nextIdInput.value.trim();
+
+      if (!stepId || !message) {
+        alert("El ID del paso y el mensaje son obligatorios.");
+        return;
+      }
+
+      const [flowId, stepName] = stepId.split(".");
+      if (!flowId || !stepName) {
+        alert("El ID del paso debe tener el formato 'flujo.paso' (ej: main.step1).");
+        return;
+      }
+
+      if (!flowData.flows[flowId]) {
+        flowData.flows[flowId] = { id: flowId, steps: {}, startStep: stepName };
+      }
+
+      const step = { message };
+      if (stepType === "input") {
+        if (saveAs) step.saveAs = saveAs;
+        if (nextId) step.nextId = nextId;
+      } else if (stepType === "options") {
+        if (optionsStr) {
+          step.options = optionsStr.split(",").map(opt => {
+            const label = opt.trim().toLowerCase();
+            return { label, nextId: `${flowId}.${label}` };
+          });
+        }
+      } else if (stepType === "final") {
+        step.isFinalStep = true;
+      } else if (nextId) {
+        step.nextId = nextId;
+      }
+
+      flowData.flows[flowId].steps[stepName] = step;
+      console.log("JSON actualizado:", flowData);
+      updateJsonViewer();
+
+      // Crear nodo asociado al paso
+      const x = 100 + nodes.length * 140;
+      const y = 100 + (nodes.length % 3) * 100;
+      createNode(x, y, message.substring(0, 20), stepId, randomColor());
+
+      // Limpiar formulario
+      stepIdInput.value = "";
+      stepMessageInput.value = "";
+      saveAsInput.value = "";
+      stepOptionsInput.value = "";
+      nextIdInput.value = "";
+    });
+
+    function randomColor() {
+      const colors = ["blue", "purple", "deeppink", "orange", "green"];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // Encontrar flujo por ID
+    function findFlowById(flowId) {
+      return flowData.flows[flowId];
+    }
+
+    // Reemplazar variables en mensajes
+    function replaceVariables(message) {
+      return message.replace(/{([^}]+)}/g, (_, key) => variables[key] || `{${key}}`);
+    }
+
+    // Mostrar mensaje en el chat
+    function showMessage(message, isBot = true) {
+      const div = document.createElement("div");
+      div.textContent = (isBot ? "Bot: " : "Usuario: ") + message;
+      div.style.marginBottom = "5px";
+      chatOutput.appendChild(div);
+      chatOutput.scrollTop = chatOutput.scrollHeight;
+    }
+
+    // Resaltar nodo activo
+    function highlightNode(nodeId) {
+      nodes.forEach(node => node.rect.classList.remove("highlighted"));
+      const node = nodes.find(n => n.id === nodeId);
+      if (node) node.rect.classList.add("highlighted");
+    }
+
+    // Procesar paso del flujo
+    function processStep(stepId) {
+      const [flowId, stepName] = stepId.split(".");
+      const flow = findFlowById(flowId);
+      if (!flow || !flow.steps[stepName]) {
+        showMessage("Error: Paso no encontrado. Escribe 'hola' para reiniciar.");
+        chatStarted = false;
+        currentStep = null;
+        return;
+      }
+      const step = flow.steps[stepName];
+      currentStep = stepId;
+      highlightNode(stepId);
+
+      const message = replaceVariables(step.message);
+      showMessage(message);
+
+      chatInput.style.display = "block";
+      chatInput.focus();
+      chatInput.onkeydown = e => {
+        if (e.key === "Enter" && chatInput.value.trim()) {
+          const userInput = chatInput.value.trim().toLowerCase();
+          showMessage(chatInput.value, false);
+          chatInput.value = "";
+
+          if (step.saveAs) {
+            variables[step.saveAs] = userInput;
+            if (step.nextId) {
+              processStep(step.nextId);
+            } else {
+              showMessage("Error: No se definió un siguiente paso.");
+              chatStarted = false;
+              currentStep = null;
+            }
+          } else if (step.options) {
+            const option = step.options.find(opt => opt.label === userInput);
+            if (option) {
+              processStep(option.nextId);
+            } else {
+              showMessage("No entendí tu respuesta, intenta de nuevo.");
+            }
+          } else if (step.isFinalStep) {
+            chatInput.style.display = "none";
+            chatStarted = false;
+            currentStep = null;
+          } else if (step.nextId) {
+            processStep(step.nextId);
+          } else {
+            showMessage("Error: No se definió un siguiente paso.");
+            chatStarted = false;
+            currentStep = null;
+          }
+        }
+      };
+    }
+
+    // Manejar entrada inicial del usuario
+    function handleInitialInput() {
+      chatInput.onkeydown = e => {
+        if (e.key === "Enter" && chatInput.value.trim()) {
+          const userInput = chatInput.value.trim().toLowerCase();
+          showMessage(chatInput.value, false);
+          chatInput.value = "";
+          if (userInput === "hola") {
+            chatStarted = true;
+            const mainFlow = flowData.flows.main;
+            if (mainFlow && mainFlow.startStep && mainFlow.steps[mainFlow.startStep]) {
+              processStep(`main.${mainFlow.startStep}`);
+            } else {
+              showMessage("No hay pasos definidos. Crea un paso en el flujo 'main'.");
+              chatStarted = false;
+              chatInput.focus();
+            }
+          } else {
+            showMessage("Por favor, escribe 'hola' para comenzar.");
+            chatInput.focus();
+          }
+        }
+      };
+    }
+
+    // Iniciar flujo
+    function startFlow() {
+      chatInput.style.display = "block";
+      chatInput.placeholder = "Escribe 'hola' para comenzar...";
+      chatInput.focus();
+      handleInitialInput();
+      updateJsonViewer(); // Mostrar JSON inicial
+    }
+
+    // Iniciar la aplicación
+    startFlow();
+  </script>
+</body>
+</html>

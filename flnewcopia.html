@@ -1,0 +1,1362 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flowchart Vanilla JS (POO) - Single File</title>
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--card:#0f1728;--accent:#22c55e;--muted:#9aa6b2}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e6eef6;background:linear-gradient(180deg,#071023 0%,#05101b 100%)}
+    .app{display:flex;height:100vh;gap:12px;padding:12px;box-sizing:border-box}
+    .sidebar{width:280px;background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    .canvas-wrap{flex:1;position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));}
+    header h1{font-size:16px;margin:0;color:var(--accent)}
+    .controls{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#d7e8f1;padding:8px;border-radius:8px;cursor:pointer}
+    button.primary{border-color:var(--accent);box-shadow:0 6px 18px rgba(34,197,94,0.08)}
+    .info{font-size:13px;color:var(--muted);margin-top:10px}
+
+    #flowcanvas{position:absolute;inset:0;touch-action:none}
+    .stage{position:absolute;inset:0;overflow:auto;background-image:radial-gradient(circle, rgba(34,197,94,0.1) 1px, transparent 1px);background-size:20px 20px;background-position:0 0}
+    
+    /* Guías de alineación */
+    .alignment-guide{position:absolute;pointer-events:none;z-index:1000}
+    .alignment-guide.vertical{width:1px;background:#ff4444;opacity:0.8;box-shadow:0 0 4px rgba(255,68,68,0.6)}
+    .alignment-guide.horizontal{height:1px;background:#ff4444;opacity:0.8;box-shadow:0 0 4px rgba(255,68,68,0.6)}
+    
+    /* Efecto de snap */
+    .box.snapping{transform:translate(var(--snap-x, 0px), var(--snap-y, 0px)) !important;transition:transform 0.1s ease-out}
+
+    .box{position:absolute;width:180px;height:100px;border-radius:8px;background:linear-gradient(180deg,#072a1a,#0d3023);border:1px solid #22c55e;box-shadow:0 0 0 2px rgba(34,197,94,0.3);cursor:grab;display:flex;flex-direction:column;color:#ffffff;}
+    .box.dragging{opacity:0.92;cursor:grabbing}
+    .box.selected{border-color:#ff4444;box-shadow:0 0 0 2px rgba(255,68,68,0.3);background:linear-gradient(180deg,#2a071a,#300d23)}
+    
+    /* Tipos de cajas para chatbot */
+    .box.type-start{border-color:#22c55e;background:linear-gradient(180deg,#0d3023,#072a1a)}
+    .box.type-question{border-color:#3b82f6;background:linear-gradient(180deg,#1e3a8a,#1e40af)}
+    .box.type-option{border-color:#f59e0b;background:linear-gradient(180deg,#92400e,#b45309)}
+    .box.type-response{border-color:#8b5cf6;background:linear-gradient(180deg,#581c87,#7c3aed)}
+    .box.type-end{border-color:#ef4444;background:linear-gradient(180deg,#7f1d1d,#dc2626)}
+    
+    .box-header{background:rgba(34,197,94,0.2);padding:6px 8px;border-bottom:1px solid rgba(34,197,94,0.3);font-size:12px;font-weight:600;text-align:center;flex-shrink:0}
+    .box-body{flex:1;padding:8px;display:flex;align-items:center;justify-content:center;font-size:11px;text-align:center;line-height:1.3}
+    .box-footer{background:rgba(0,0,0,0.2);padding:4px 8px;border-top:1px solid rgba(34,197,94,0.2);font-size:10px;text-align:center;color:rgba(255,255,255,0.7);flex-shrink:0}
+    
+    .box .title{pointer-events:none;font-weight:600}
+    
+    /* Modal lateral de edición */
+    .edit-modal{position:fixed;top:0;right:0;width:400px;height:100vh;background:#1e293b;z-index:10000;transform:translateX(100%);transition:transform 0.3s ease;box-shadow:-4px 0 20px rgba(0,0,0,0.5)}
+    .edit-modal.open{transform:translateX(0)}
+    .edit-modal-header{background:#0f172a;padding:20px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}
+    .edit-modal-title{color:#22c55e;font-size:18px;font-weight:600;margin:0}
+    .edit-modal-close{background:#ef4444;border:none;color:white;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:16px}
+    .edit-modal-body{padding:20px;height:calc(100vh - 140px);overflow-y:auto}
+    .edit-field{margin-bottom:20px}
+    .edit-field label{display:block;color:#e2e8f0;font-size:14px;font-weight:500;margin-bottom:8px}
+    .edit-field textarea{width:100%;min-height:100px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;color:#e2e8f0;font-size:14px;font-family:inherit;resize:vertical}
+    .edit-field input{width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;color:#e2e8f0;font-size:14px;font-family:inherit}
+    .edit-field select{width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;color:#e2e8f0;font-size:14px;font-family:inherit}
+    .edit-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:20px}
+    .edit-btn{background:#22c55e;border:none;color:white;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500}
+    .edit-btn.cancel{background:#6b7280}
+    .edit-btn:hover{opacity:0.9}
+
+    .anchor{position:absolute;width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;cursor:crosshair}
+    .anchor:hover{background:var(--accent);border-color:rgba(255,255,255,0.12)}
+    .anchor[data-pos="top"]{left:50%;transform:translate(-50%,-50%);top:0}
+    .anchor[data-pos="bottom"]{left:50%;transform:translate(-50%,50%);bottom:0}
+    .anchor[data-pos="left"]{top:50%;transform:translate(-50%,-50%);left:0}
+    .anchor[data-pos="right"]{top:50%;transform:translate(50%,-50%);right:0}
+
+    .conn-label{position:absolute;padding:2px 6px;font-size:12px;border-radius:6px;background:rgba(2,6,23,0.7);color:#cfeee6;border:1px solid rgba(255,255,255,0.03)}
+    .conn-line{stroke:#22c55e;stroke-width:3;fill:none;cursor:pointer}
+    .conn-line.selected{stroke:#ff4444;stroke-width:4;filter:drop-shadow(0 0 4px rgba(255,68,68,0.6))}
+
+    .list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+    .list .row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+    footer{margin-top:12px;font-size:12px;color:var(--muted)}
+
+    @media (max-width:800px){.sidebar{display:none}.app{padding:8px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header>
+        <h1>FlowChart — Vanilla JS (POO)</h1>
+        <div class="info">Arrastra cajas, haz click en un punto de anclaje y luego en otro para conectar. Las líneas se adaptan automáticamente.</div>
+      </header>
+
+      <div class="controls">
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">
+          <button id="addStartBtn" class="primary">🚀 Inicio</button>
+          <button id="addQuestionBtn">❓ Pregunta</button>
+          <button id="addOptionBtn">🔘 Opción</button>
+          <button id="addResponseBtn">💬 Respuesta</button>
+          <button id="addEndBtn">🏁 Fin</button>
+        </div>
+        <button id="clearBtn">Limpiar todo</button>
+        <button id="removeDuplicatesBtn">Limpiar duplicados</button>
+        <div style="display:flex;gap:8px">
+          <button id="exportBtn">Exportar JSON</button>
+          <button id="importBtn">Importar JSON</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="exportChatbotBtn" style="background:#8b5cf6;border-color:#8b5cf6">🤖 Exportar Chatbot</button>
+          <button id="previewBtn" style="background:#3b82f6;border-color:#3b82f6">👁️ Vista Previa</button>
+        </div>
+      </div>
+
+      <div class="list">
+        <div class="row">Cajas: <span id="boxCount">0</span></div>
+        <div class="row">Conexiones: <span id="connCount">0</span></div>
+      </div>
+
+      <footer>
+        <div style="margin-top:8px">Etiquetas de conexión: se muestran sobre la línea con el formato <code>fromId.anchor → toId.anchor</code></div>
+      </footer>
+    </aside>
+
+    <div class="canvas-wrap">
+      <div id="flowcanvas" class="stage">
+        <svg id="svg" width="2000" height="2000" style="position:absolute;left:0;top:0;pointer-events:none"></svg>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+    class Box {
+      constructor(flow, id, x = 40, y = 40, title = '', type = 'question'){
+        this.flow = flow;
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.w = 180;
+        this.h = 100;
+        this.title = title || `Caja ${id}`;
+        this.type = type; // start, question, option, response, end
+        this.chatbotData = this._getDefaultChatbotData();
+        this.el = this._createEl(); // Fixed method name
+        this._bindDrag();
+        this.updateDOM();
+      }
+      _getDefaultChatbotData(){
+        const defaults = {
+          start: { triggers: [], steps: [] },
+          question: { question: '', key: '', options: {}, subflows: {} },
+          option: { text: '', value: '', nextFlow: null },
+          response: { message: '', variables: [] },
+          end: { message: 'Conversación terminada' }
+        };
+        return defaults[this.type] || {};
+      }
+      _createEl(){ // Renamed from _ceateEl to _createEl
+        const el = document.createElement('div');
+        el.className = `box type-${this.type}`;
+        el.dataset.id = this.id;
+        el.dataset.type = this.type;
+        
+        const typeIcons = {
+          start: '🚀',
+          question: '❓',
+          option: '🔘',
+          response: '💬',
+          end: '🏁'
+        };
+        
+        el.innerHTML = `
+          <div class="box-header">${typeIcons[this.type]} ${this.title}</div>
+          <div class="box-body">
+            <div class="title">${this._getBodyText()}</div>
+          </div>
+          <div class="box-footer">${this.type.toUpperCase()}</div>
+          <div class="anchor" data-pos="top" data-box="${this.id}" title="top"></div>
+          <div class="anchor" data-pos="right" data-box="${this.id}" title="right"></div>
+          <div class="anchor" data-pos="bottom" data-box="${this.id}" title="bottom"></div>
+          <div class="anchor" data-pos="left" data-box="${this.id}" title="left"></div>
+        `;
+        this.flow.stage.appendChild(el);
+        return el;
+      }
+      _getBodyText(){
+        switch(this.type){
+          case 'start':
+            return this.chatbotData.triggers && this.chatbotData.triggers.length > 0
+              ? this.chatbotData.triggers.join(', ')
+              : 'Flujo principal';
+          case 'question':
+            let qText = this.chatbotData.question || 'Pregunta...';
+            if (this.chatbotData.options && Object.keys(this.chatbotData.options).length > 0) {
+              const optionList = Object.values(this.chatbotData.options).map((val, i) => {
+                let text = val[1] || Object.keys(this.chatbotData.options)[i] || '';
+                text = text.charAt(0).toUpperCase() + text.slice(1).replace(/azucar/g, 'azúcar');
+                return `${i+1}. ${text}`;
+              }).join('\n');
+              qText += '\n' + optionList;
+            }
+            return qText;
+          case 'option': return this.chatbotData.text || 'Opción...';
+          case 'response': return this.chatbotData.message || 'Respuesta...';
+          case 'end': return this.chatbotData.message || 'Fin del flujo';
+          default: return 'Contenido';
+        }
+      }
+      _bindDrag(){
+        const el = this.el;
+        let startX, startY, origX, origY, dragging = false;
+        const down = (e) => {
+          if(e.target.classList.contains('anchor')) return;
+          dragging = true; el.classList.add('dragging');
+          startX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+          startY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+          origX = this.x; origY = this.y;
+          e.preventDefault();
+        };
+        const move = (e) => {
+          if(!dragging) return;
+          const mx = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+          const my = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+          const dx = mx - startX; const dy = my - startY;
+          this.x = origX + dx; this.y = origY + dy;
+          
+          // Mostrar guías de alineación
+          this.flow.showAlignmentGuides(this);
+          
+          this.updateDOM();
+          this.flow.requestUpdate();
+        };
+        const up = () => { 
+          if(dragging){
+            dragging=false; 
+            el.classList.remove('dragging');
+            this.flow.hideAlignmentGuides();
+            this.flow.requestUpdate();
+          } 
+        };
+        el.addEventListener('mousedown', down);
+        el.addEventListener('touchstart', down, {passive:false});
+        window.addEventListener('mousemove', move);
+        window.addEventListener('touchmove', move, {passive:false});
+        window.addEventListener('mouseup', up);
+        window.addEventListener('touchend', up);
+      }
+      getAnchorPos(pos){
+        const left = this.x; const top = this.y;
+        switch(pos){
+          case 'top': return {x: left + this.w/2, y: top};
+          case 'bottom': return {x: left + this.w/2, y: top + this.h};
+          case 'left': return {x: left, y: top + this.h/2};
+          case 'right': return {x: left + this.w, y: top + this.h/2};
+        }
+      }
+      getAllAnchorPos(){
+        return {
+          top: this.getAnchorPos('top'),
+          bottom: this.getAnchorPos('bottom'),
+          left: this.getAnchorPos('left'),
+          right: this.getAnchorPos('right')
+        };
+      }
+      updateDOM(){
+        this.el.style.transform = `translate(${this.x}px, ${this.y}px)`;
+      }
+      setHeader(text){
+        const header = this.el.querySelector('.box-header');
+        if(header) header.textContent = text;
+      }
+      setBody(text){
+        const body = this.el.querySelector('.box-body .title');
+        if(body) body.textContent = text;
+      }
+      setFooter(text){
+        const footer = this.el.querySelector('.box-footer');
+        if(footer) footer.textContent = text;
+      }
+      serialize(){
+        return {id:this.id,x:this.x,y:this.y,w:this.w,h:this.h,title:this.title};
+      }
+      select(){
+        this.el.classList.add('selected');
+      }
+      deselect(){
+        this.el.classList.remove('selected');
+      }
+      isSelected(){
+        return this.el.classList.contains('selected');
+      }
+      destroy(){
+        this.el.remove();
+      }
+    }
+
+    class Connector {
+      constructor(flow, id, fromBox, fromAnchor, toBox, toAnchor){
+        this.flow = flow; this.id = id;
+        this.fromBox = fromBox; this.fromAnchor = fromAnchor;
+        this.toBox = toBox; this.toAnchor = toAnchor;
+        this.path = null; this.labelEl = null;
+        this._createSVG();
+      }
+      _createSVG(){
+        const svgNS = 'http://www.w3.org/2000/svg';
+        this.path = document.createElementNS(svgNS,'path');
+        this.path.setAttribute('stroke','#22c55e');
+        this.path.setAttribute('stroke-width','3');
+        this.path.setAttribute('fill','none');
+        this.path.setAttribute('data-conn-id',this.id);
+        this.path.classList.add('conn-line');
+        this.path.style.pointerEvents = 'stroke';
+        this.flow.svg.appendChild(this.path);
+
+        this.labelEl = document.createElement('div');
+        this.labelEl.className = 'conn-label';
+        this.flow.stage.appendChild(this.labelEl);
+        this._updateLabel();
+      }
+      _updateLabel(){
+        this.labelEl.textContent = `${this.fromBox.id}.${this.fromAnchor} → ${this.toBox.id}.${this.toAnchor}`;
+      }
+      _getBestAnchors(){
+        const fromAnchors = this.fromBox.getAllAnchorPos();
+        const toAnchors = this.toBox.getAllAnchorPos();
+        const anchorPoints = ['top', 'bottom', 'left', 'right'];
+
+        let bestFromAnchor = this.fromAnchor;
+        let bestToAnchor = this.toAnchor;
+        let minDistance = Infinity;
+
+        // Calculate relative position of toBox with respect to fromBox
+        const fromCenter = {x: this.fromBox.x + this.fromBox.w/2, y: this.fromBox.y + this.fromBox.h/2};
+        const toCenter = {x: this.toBox.x + this.toBox.w/2, y: this.toBox.y + this.toBox.h/2};
+        const dx = toCenter.x - fromCenter.x;
+        const dy = toCenter.y - fromCenter.y;
+
+        // Determine preferred anchors based on relative position
+        let preferredFrom = 'right', preferredTo = 'left';
+        if(Math.abs(dx) > Math.abs(dy)){
+          // Horizontal preference
+          if(dx > 0){
+            preferredFrom = 'right';
+            preferredTo = 'left';
+          } else {
+            preferredFrom = 'left';
+            preferredTo = 'right';
+          }
+        } else {
+          // Vertical preference
+          if(dy > 0){
+            preferredFrom = 'bottom';
+            preferredTo = 'top';
+          } else {
+            preferredFrom = 'top';
+            preferredTo = 'bottom';
+          }
+        }
+
+        // Check if the original anchors are still optimal or override with preferred ones
+        const distance = (p1, p2) => Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
+        for(const fAnchor of anchorPoints){
+          for(const tAnchor of anchorPoints){
+            const dist = distance(fromAnchors[fAnchor], toAnchors[tAnchor]);
+            if(dist < minDistance){
+              minDistance = dist;
+              bestFromAnchor = fAnchor;
+              bestToAnchor = tAnchor;
+            }
+          }
+        }
+
+        // Override with preferred anchors if they are close enough
+        const preferredDist = distance(fromAnchors[preferredFrom], toAnchors[preferredTo]);
+        if(preferredDist <= minDistance * 1.2){ // Allow 20% tolerance
+          bestFromAnchor = preferredFrom;
+          bestToAnchor = preferredTo;
+        }
+
+        return {fromAnchor: bestFromAnchor, toAnchor: bestToAnchor};
+      }
+      update(){
+        // Update anchors dynamically
+        const {fromAnchor, toAnchor} = this._getBestAnchors();
+        this.fromAnchor = fromAnchor;
+        this.toAnchor = toAnchor;
+
+        const a = this.fromBox.getAnchorPos(this.fromAnchor);
+        const b = this.toBox.getAnchorPos(this.toAnchor);
+        const dx = Math.abs(b.x - a.x);
+        const dy = Math.abs(b.y - a.y);
+        const cx1 = a.x + (this.fromAnchor === 'left' ? -dx*0.5 : (this.fromAnchor === 'right' ? dx*0.5 : 0));
+        const cy1 = a.y + (this.fromAnchor === 'top' ? -dy*0.3 : (this.fromAnchor === 'bottom' ? dy*0.3 : 0));
+        const cx2 = b.x + (this.toAnchor === 'left' ? -dx*0.5 : (this.toAnchor === 'right' ? dx*0.5 : 0));
+        const cy2 = b.y + (this.toAnchor === 'top' ? -dy*0.3 : (this.toAnchor === 'bottom' ? dy*0.3 : 0));
+        // Línea recta en lugar de curva
+        const d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+        this.path.setAttribute('d',d);
+        const mx = (a.x + b.x)/2; const my = (a.y + b.y)/2;
+        this.labelEl.style.transform = `translate(${mx}px, ${my}px)`;
+        this._updateLabel();
+      }
+      serialize(){
+        return {id:this.id,from:this.fromBox.id,fromAnchor:this.fromAnchor,to:this.toBox.id,toAnchor:this.toAnchor};
+      }
+      select(){
+        this.path.classList.add('selected');
+      }
+      deselect(){
+        this.path.classList.remove('selected');
+      }
+      isSelected(){
+        return this.path.classList.contains('selected');
+      }
+      destroy(){
+        this.path.remove(); this.labelEl.remove();
+      }
+    }
+
+    class Flowchart {
+      constructor(){
+        this.stage = $('#flowcanvas');
+        this.svg = $('#svg');
+        this.boxes = new Map();
+        this.conns = new Map();
+        this._boxCounter = 0; this._connCounter = 0;
+        this.pendingAnchor = null;
+        this._needsUpdate = false;
+        this._bindUI();
+        this.requestUpdate();
+      }
+      _bindUI(){
+        $('#addStartBtn').addEventListener('click',()=>this.addBox(60,60,'Inicio','start'));
+        $('#addQuestionBtn').addEventListener('click',()=>this.addBox(60,60,'Pregunta','question'));
+        $('#addOptionBtn').addEventListener('click',()=>this.addBox(60,60,'Opción','option'));
+        $('#addResponseBtn').addEventListener('click',()=>this.addBox(60,60,'Respuesta','response'));
+        $('#addEndBtn').addEventListener('click',()=>this.addBox(60,60,'Fin','end'));
+        $('#clearBtn').addEventListener('click',()=>this.clear());
+        $('#removeDuplicatesBtn').addEventListener('click',()=>this.removeDuplicateConnections());
+        $('#exportBtn').addEventListener('click',()=>this.export());
+        $('#importBtn').addEventListener('click',()=>this.importPrompt());
+        $('#exportChatbotBtn').addEventListener('click',()=>this.exportChatbot());
+        $('#previewBtn').addEventListener('click',()=>this.showPreview());
+
+        this.stage.addEventListener('click', (e)=>{
+          const a = e.target.closest('.anchor');
+          const box = e.target.closest('.box');
+          const line = e.target.closest('.conn-line');
+          const header = e.target.closest('.box-header');
+          const body = e.target.closest('.box-body');
+          const footer = e.target.closest('.box-footer');
+          
+          if(a){
+            const boxId = a.dataset.box; const pos = a.dataset.pos;
+            const box = this.boxes.get(boxId);
+            if(!this.pendingAnchor){
+              this.pendingAnchor = {box,pos};
+              a.style.background = 'var(--accent)';
+            } else {
+              const from = this.pendingAnchor; const to = {box,pos};
+              if(from.box.id === to.box.id){ 
+                this._clearPending(); 
+                this._showMessage('No puedes conectar una caja consigo misma', 'warning');
+                return; 
+              }
+              if(this._connectionExists(from.box,from.pos,to.box,to.pos)) { 
+                this._clearPending(); 
+                this._showMessage('Ya existe una conexión entre estas cajas', 'warning');
+                return; 
+              }
+              this.createConn(from.box, from.pos, to.box, to.pos);
+              this._clearPending();
+            }
+          } else if(header){
+            // Editar header
+            this._editBoxContent(e.target, 'header');
+          } else if(body){
+            // Editar body
+            this._editBoxContent(e.target, 'body');
+          } else if(footer){
+            // Editar footer
+            this._editBoxContent(e.target, 'footer');
+          } else if(box){
+            // Seleccionar/deseleccionar caja
+            this._clearAllSelections();
+            const boxId = box.dataset.id;
+            const boxObj = this.boxes.get(boxId);
+            if(boxObj) boxObj.select();
+          } else if(line){
+            // Seleccionar/deseleccionar línea
+            this._clearAllSelections();
+            const connId = line.dataset.connId;
+            const conn = this.conns.get(connId);
+            if(conn) conn.select();
+          } else {
+            // Click en área vacía - deseleccionar todo
+            this._clearAllSelections();
+          }
+        });
+
+        this.stage.addEventListener('dblclick', ()=> this._clearPending());
+
+        window.addEventListener('keydown', (e)=>{
+          if(e.key === 'Delete' || e.key === 'Backspace'){
+            this._deleteSelected();
+          }
+        });
+      }
+      _connectionExists(fromBox, fromAnchor, toBox, toAnchor){
+        for(const c of this.conns.values()){
+          // Verificar conexión exacta (mismo orden)
+          if(c.fromBox===fromBox && c.toBox===toBox){
+            return true;
+          }
+          // Verificar conexión inversa (orden opuesto)
+          if(c.fromBox===toBox && c.toBox===fromBox){
+            return true;
+          }
+        }
+        return false;
+      }
+      _clearPending(){
+        this.stage.querySelectorAll('.anchor').forEach(a=>a.style.background='');
+        this.pendingAnchor = null;
+      }
+      _clearAllSelections(){
+        for(const box of this.boxes.values()) box.deselect();
+        for(const conn of this.conns.values()) conn.deselect();
+      }
+      _deleteSelected(){
+        const selectedBoxes = Array.from(this.boxes.values()).filter(box => box.isSelected());
+        const selectedConns = Array.from(this.conns.values()).filter(conn => conn.isSelected());
+        
+        // Eliminar conexiones seleccionadas
+        for(const conn of selectedConns){
+          conn.destroy();
+          this.conns.delete(conn.id);
+        }
+        
+        // Eliminar cajas seleccionadas (esto también eliminará sus conexiones)
+        for(const box of selectedBoxes){
+          // Eliminar todas las conexiones que involucran esta caja
+          const connsToDelete = Array.from(this.conns.values()).filter(conn => 
+            conn.fromBox === box || conn.toBox === box
+          );
+          for(const conn of connsToDelete){
+            conn.destroy();
+            this.conns.delete(conn.id);
+          }
+          
+          box.destroy();
+          this.boxes.delete(box.id);
+        }
+        
+        if(selectedBoxes.length > 0 || selectedConns.length > 0){
+          this.requestUpdate();
+          this._updateStats();
+        }
+      }
+      addBox(x=60,y=60,title='',type='question'){
+        const id = `b${++this._boxCounter}`;
+        const b = new Box(this,id,x + this._boxCounter*8, y + this._boxCounter*6, title || `Caja ${this._boxCounter}`, type);
+        this.boxes.set(id,b);
+        this.requestUpdate(); this._updateStats();
+        return b;
+      }
+      createConn(fromBox, fromAnchor, toBox, toAnchor){
+        const id = `c${++this._connCounter}`;
+        const conn = new Connector(this,id,fromBox,fromAnchor,toBox,toAnchor);
+        this.conns.set(id,conn);
+        this.requestUpdate(); this._updateStats();
+        return conn;
+      }
+      requestUpdate(){
+        if(this._needsUpdate) return; this._needsUpdate = true;
+        requestAnimationFrame(()=>{ this._needsUpdate=false; this._render(); });
+      }
+      _render(){
+        for(const conn of this.conns.values()) conn.update();
+      }
+      _updateStats(){
+        $('#boxCount').textContent = this.boxes.size;
+        $('#connCount').textContent = this.conns.size;
+      }
+      showAlignmentGuides(draggingBox){
+        this.hideAlignmentGuides();
+        
+        const draggingCenterX = draggingBox.x + draggingBox.w / 2;
+        const draggingCenterY = draggingBox.y + draggingBox.h / 2;
+        const draggingLeft = draggingBox.x;
+        const draggingRight = draggingBox.x + draggingBox.w;
+        const draggingTop = draggingBox.y;
+        const draggingBottom = draggingBox.y + draggingBox.h;
+        
+        const snapThreshold = 10; // Píxeles de tolerancia para el snap
+        
+        // Verificar alineación con otras cajas
+        for(const box of this.boxes.values()){
+          if(box === draggingBox) continue;
+          
+          const boxCenterX = box.x + box.w / 2;
+          const boxCenterY = box.y + box.h / 2;
+          const boxLeft = box.x;
+          const boxRight = box.x + box.w;
+          const boxTop = box.y;
+          const boxBottom = box.y + box.h;
+          
+          // Alineación vertical (mismo centro X)
+          if(Math.abs(draggingCenterX - boxCenterX) < snapThreshold){
+            this._createVerticalGuide(boxCenterX);
+            // Snap automático
+            draggingBox.x = boxCenterX - draggingBox.w / 2;
+          }
+          // Alineación horizontal (mismo centro Y)
+          else if(Math.abs(draggingCenterY - boxCenterY) < snapThreshold){
+            this._createHorizontalGuide(boxCenterY);
+            // Snap automático
+            draggingBox.y = boxCenterY - draggingBox.h / 2;
+          }
+          // Alineación de bordes izquierdos
+          else if(Math.abs(draggingLeft - boxLeft) < snapThreshold){
+            this._createVerticalGuide(boxLeft);
+            draggingBox.x = boxLeft;
+          }
+          // Alineación de bordes derechos
+          else if(Math.abs(draggingRight - boxRight) < snapThreshold){
+            this._createVerticalGuide(boxRight);
+            draggingBox.x = boxRight - draggingBox.w;
+          }
+          // Alineación de bordes superiores
+          else if(Math.abs(draggingTop - boxTop) < snapThreshold){
+            this._createHorizontalGuide(boxTop);
+            draggingBox.y = boxTop;
+          }
+          // Alineación de bordes inferiores
+          else if(Math.abs(draggingBottom - boxBottom) < snapThreshold){
+            this._createHorizontalGuide(boxBottom);
+            draggingBox.y = boxBottom - draggingBox.h;
+          }
+        }
+      }
+      _createVerticalGuide(x){
+        const guide = document.createElement('div');
+        guide.className = 'alignment-guide vertical';
+        guide.style.left = x + 'px';
+        guide.style.top = '0px';
+        guide.style.height = '100%';
+        this.stage.appendChild(guide);
+      }
+      _createHorizontalGuide(y){
+        const guide = document.createElement('div');
+        guide.className = 'alignment-guide horizontal';
+        guide.style.top = y + 'px';
+        guide.style.left = '0px';
+        guide.style.width = '100%';
+        this.stage.appendChild(guide);
+      }
+      hideAlignmentGuides(){
+        const guides = this.stage.querySelectorAll('.alignment-guide');
+        guides.forEach(guide => guide.remove());
+      }
+      _editBoxContent(element, type){
+        const box = this.boxes.get(element.closest('.box').dataset.id);
+        if(!box) return;
+        
+        this._showEditModal(box, type);
+      }
+      _showEditModal(box, type){
+        // Crear modal si no existe
+        let modal = document.querySelector('.edit-modal');
+        if(!modal){
+          modal = this._createEditModal();
+          document.body.appendChild(modal);
+        }
+        
+        // Configurar modal según el tipo de caja
+        this._configureModalForBox(modal, box, type);
+        
+        // Mostrar modal
+        modal.classList.add('open');
+      }
+      _createEditModal(){
+        const modal = document.createElement('div');
+        modal.className = 'edit-modal';
+        modal.innerHTML = `
+          <div class="edit-modal-header">
+            <h3 class="edit-modal-title">Editar Caja</h3>
+            <button class="edit-modal-close">✕</button>
+          </div>
+          <div class="edit-modal-body">
+            <div class="edit-field">
+              <label>Título de la caja:</label>
+              <input type="text" id="edit-title" placeholder="Título...">
+            </div>
+            <div class="edit-field">
+              <label>Contenido principal:</label>
+              <textarea id="edit-content" placeholder="Contenido..."></textarea>
+            </div>
+            <div class="edit-field">
+              <label>Información adicional:</label>
+              <input type="text" id="edit-extra" placeholder="Info adicional...">
+            </div>
+            <div class="edit-field" id="chatbot-specific-fields">
+              <!-- Campos específicos del chatbot se agregan aquí -->
+            </div>
+            <div class="edit-actions">
+              <button class="edit-btn cancel">Cancelar</button>
+              <button class="edit-btn save">Guardar</button>
+            </div>
+          </div>
+        `;
+        
+        // Event listeners
+        modal.querySelector('.edit-modal-close').addEventListener('click', () => this._closeEditModal());
+        modal.querySelector('.edit-btn.cancel').addEventListener('click', () => this._closeEditModal());
+        modal.querySelector('.edit-btn.save').addEventListener('click', () => this._saveBoxChanges());
+        
+        // Cerrar con ESC
+        document.addEventListener('keydown', (e) => {
+          if(e.key === 'Escape' && modal.classList.contains('open')){
+            this._closeEditModal();
+          }
+        });
+        
+        return modal;
+      }
+      _configureModalForBox(modal, box, type){
+        const titleInput = modal.querySelector('#edit-title');
+        const contentTextarea = modal.querySelector('#edit-content');
+        const extraInput = modal.querySelector('#edit-extra');
+        const specificFields = modal.querySelector('#chatbot-specific-fields');
+        
+        // Configurar título
+        titleInput.value = box.title;
+        
+        // Configurar contenido según el tipo
+        if(type === 'header'){
+          contentTextarea.value = box.title;
+          contentTextarea.placeholder = 'Título de la caja...';
+        } else if(type === 'body'){
+          if(box.type === 'question'){
+            contentTextarea.value = box.chatbotData.question || '';
+            contentTextarea.placeholder = 'Pregunta...';
+          } else if(box.type === 'option'){
+            contentTextarea.value = box.chatbotData.text || '';
+            contentTextarea.placeholder = 'Texto de la opción...';
+          } else if(box.type === 'response'){
+            contentTextarea.value = box.chatbotData.message || '';
+            contentTextarea.placeholder = 'Mensaje de respuesta...';
+          } else if(box.type === 'start'){
+            contentTextarea.value = 'Flujo principal';
+            contentTextarea.placeholder = 'Descripción del flujo...';
+          } else if(box.type === 'end'){
+            contentTextarea.value = box.chatbotData.message || '';
+            contentTextarea.placeholder = 'Mensaje final...';
+          }
+        } else if(type === 'footer'){
+          if(box.type === 'question'){
+            extraInput.value = box.chatbotData.key || '';
+            extraInput.placeholder = 'Key de la variable...';
+          } else {
+            extraInput.value = box.type.toUpperCase();
+            extraInput.placeholder = 'Tipo de caja...';
+          }
+        }
+        
+        // Configurar campos específicos del chatbot
+        this._addChatbotSpecificFields(specificFields, box);
+        
+        // Guardar referencia a la caja actual
+        modal.dataset.currentBox = box.id;
+        modal.dataset.editType = type;
+      }
+      _addChatbotSpecificFields(container, box){
+        container.innerHTML = '';
+        
+        if(box.type === 'start'){
+          container.innerHTML = `
+            <div class="edit-field">
+              <label>Triggers (palabras clave separadas por comas):</label>
+              <textarea id="edit-triggers" placeholder="hola, pedido, quiero">${(box.chatbotData.triggers || []).join(', ')}</textarea>
+            </div>
+          `;
+        } else if(box.type === 'question'){
+          container.innerHTML = `
+            <div class="edit-field">
+              <label>Key de la variable:</label>
+              <input type="text" id="edit-key" placeholder="nombre" value="${box.chatbotData.key || ''}">
+            </div>
+            <div class="edit-field">
+              <label>Opciones (una por línea, formato: clave=valor):</label>
+              <textarea id="edit-options" placeholder="cafe=Café&#10;pizza=Pizza">${this._formatOptions(box.chatbotData.options || {})}</textarea>
+            </div>
+          `;
+        } else if(box.type === 'option'){
+          container.innerHTML = `
+            <div class="edit-field">
+              <label>Valor de la opción:</label>
+              <input type="text" id="edit-value" placeholder="cafe" value="${box.chatbotData.value || ''}">
+            </div>
+          `;
+        } else if(box.type === 'response'){
+          container.innerHTML = `
+            <div class="edit-field">
+              <label>Variables usadas (separadas por comas):</label>
+              <input type="text" id="edit-variables" placeholder="nombre, opcion" value="${(box.chatbotData.variables || []).join(', ')}">
+            </div>
+          `;
+        }
+      }
+      _formatOptions(options) {
+  return Object.entries(options).map(([key, value]) => `${key}=${value.join(',')}`).join('\n');
+}
+      _saveBoxChanges(){
+        const modal = document.querySelector('.edit-modal');
+        const box = this.boxes.get(modal.dataset.currentBox);
+        if(!box) return;
+        
+        const title = modal.querySelector('#edit-title').value;
+        const content = modal.querySelector('#edit-content').value;
+        const extra = modal.querySelector('#edit-extra').value;
+        
+        // Actualizar título
+        box.title = title;
+        
+        // Actualizar contenido según el tipo
+        if(modal.dataset.editType === 'header'){
+          box.title = content;
+        } else if(modal.dataset.editType === 'body'){
+          if(box.type === 'question'){
+            box.chatbotData.question = content;
+          } else if(box.type === 'option'){
+            box.chatbotData.text = content;
+          } else if(box.type === 'response'){
+            box.chatbotData.message = content;
+          } else if(box.type === 'end'){
+            box.chatbotData.message = content;
+          }
+        } else if(modal.dataset.editType === 'footer'){
+          if(box.type === 'question'){
+            box.chatbotData.key = extra;
+          }
+        }
+        
+        // Actualizar campos específicos del chatbot
+        this._updateChatbotSpecificFields(modal, box);
+        
+        // Actualizar la visualización de la caja
+        this._updateBoxDisplay(box);
+        
+        this._closeEditModal();
+        this.requestUpdate();
+      }
+      _updateChatbotSpecificFields(modal, box) {
+  if (box.type === 'start') {
+    const triggersText = modal.querySelector('#edit-triggers').value;
+    box.chatbotData.triggers = triggersText.split(',').map(t => t.trim()).filter(t => t);
+  } else if (box.type === 'question') {
+    box.chatbotData.key = modal.querySelector('#edit-key').value;
+    const optionsText = modal.querySelector('#edit-options').value;
+    const options = {};
+    optionsText.split('\n').forEach(line => {
+      const [key, value] = line.split('=');
+      if (key && value) {
+        options[key.trim()] = value.split(',').map(v => v.trim());
+      }
+    });
+    box.chatbotData.options = options;
+  } else if (box.type === 'option') {
+    box.chatbotData.value = modal.querySelector('#edit-value').value;
+  } else if (box.type === 'response') {
+    const variablesText = modal.querySelector('#edit-variables').value;
+    box.chatbotData.variables = variablesText.split(',').map(v => v.trim()).filter(v => v);
+  }
+}
+
+
+      
+      
+      _updateBoxDisplay(box){
+        const boxEl = box.el;
+        const header = boxEl.querySelector('.box-header');
+        const body = boxEl.querySelector('.box-body .title');
+        const footer = boxEl.querySelector('.box-footer');
+        
+        // Actualizar header
+        const typeIcons = {
+          start: '🚀',
+          question: '❓',
+          option: '🔘',
+          response: '💬',
+          end: '🏁'
+        };
+        header.textContent = `${typeIcons[box.type]} ${box.title}`;
+        
+        // Actualizar body
+        body.textContent = box._getBodyText();
+        
+        // Actualizar footer
+        footer.textContent = box.type.toUpperCase();
+      }
+      _closeEditModal(){
+        const modal = document.querySelector('.edit-modal');
+        if(modal){
+          modal.classList.remove('open');
+        }
+      }
+      _showMessage(text, type = 'info'){
+        // Crear mensaje temporal
+        const message = document.createElement('div');
+        message.style.cssText = `
+          position: fixed; top: 20px; right: 20px; z-index: 10000;
+          background: ${type === 'warning' ? '#ff4444' : '#22c55e'};
+          color: white; padding: 12px 16px; border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          font-size: 14px; font-weight: 500;
+          transform: translateX(100%); transition: transform 0.3s ease;
+        `;
+        message.textContent = text;
+        document.body.appendChild(message);
+        
+        // Animar entrada
+        setTimeout(() => message.style.transform = 'translateX(0)', 10);
+        
+        // Remover después de 3 segundos
+        setTimeout(() => {
+          message.style.transform = 'translateX(100%)';
+          setTimeout(() => message.remove(), 300);
+        }, 3000);
+      }
+      removeDuplicateConnections(){
+        const seen = new Set();
+        const toRemove = [];
+        
+        for(const conn of this.conns.values()){
+          const key1 = `${conn.fromBox.id}-${conn.toBox.id}`;
+          const key2 = `${conn.toBox.id}-${conn.fromBox.id}`;
+          
+          if(seen.has(key1) || seen.has(key2)){
+            toRemove.push(conn);
+          } else {
+            seen.add(key1);
+            seen.add(key2);
+          }
+        }
+        
+        for(const conn of toRemove){
+          conn.destroy();
+          this.conns.delete(conn.id);
+        }
+        
+        if(toRemove.length > 0){
+          this.requestUpdate();
+          this._updateStats();
+          this._showMessage(`Se eliminaron ${toRemove.length} conexiones duplicadas`, 'info');
+        }
+      }
+      clear(){
+        for(const b of this.boxes.values()) b.destroy(); this.boxes.clear();
+        for(const c of this.conns.values()) c.destroy(); this.conns.clear();
+        this._boxCounter = 0; this._connCounter = 0; this.requestUpdate(); this._updateStats();
+      }
+     
+      export(){
+        const data = {
+          boxes:Array.from(this.boxes.values()).map(b=>b.serialize()),
+          conns:Array.from(this.conns.values()).map(c=>c.serialize())
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)],{type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'flowchart.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      importPrompt(){
+        const txt = prompt('Pega JSON de flujo para importar:');
+        if(!txt) return;
+        try{
+          const obj = JSON.parse(txt);
+          this._import(obj);
+        }catch(err){
+          alert('JSON inválido');
+        }
+      }
+      _import(obj){
+        this.clear();
+        if(obj.boxes){
+          for(const b of obj.boxes){
+            const nb = this.addBox(b.x,b.y,b.title);
+            nb.x=b.x; nb.y=b.y;
+            nb.updateDOM();
+          }
+        }
+        const idToBox = new Map();
+        for(const b of this.boxes.values()) idToBox.set(b.id,b);
+        if(obj.conns){
+          for(const c of obj.conns){
+            const from = idToBox.get(c.from);
+            const to = idToBox.get(c.to);
+            if(from && to && !this._connectionExists(from,c.fromAnchor,to,c.toAnchor)){
+              this.createConn(from,c.fromAnchor,to,c.toAnchor);
+            }
+          }
+        }
+        this.requestUpdate();
+      }
+      exportChatbot(){
+        const chatbotData = this._generateChatbotJSON();
+        const blob = new Blob([JSON.stringify(chatbotData, null, 2)],{type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'chatbot-flow.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        this._showMessage('Chatbot exportado exitosamente', 'info');
+      }
+      _generateChatbotJSON(){
+        const flows = {};
+        const startBoxes = Array.from(this.boxes.values()).filter(box => box.type === 'start');
+        
+        if(startBoxes.length === 0){
+          this._showMessage('Necesitas al menos una caja de inicio', 'warning');
+          return {};
+        }
+        
+        const idMap = {'main': 1001, 'cafe': 2001, 'helado': 2002, 'pizza': 2003};
+        
+        // Procesar todos los flujos, nombrando por título de start box (main para el primero si título no es main)
+        startBoxes.forEach(startBox => {
+          let flowName = startBox.title.toLowerCase().replace(/\s+/g, '');
+          if (flowName === 'mainstart' || !flowName) flowName = 'main';
+          if (!flows[flowName]) {
+            flows[flowName] = this._processFlow(startBox, flowName, idMap);
+          }
+        });
+        
+        // Limpiar duplicados
+        this._processSubFlows(flows);
+        
+        return flows;
+      }
+      _processFlow(startBox, flowName){
+        const flowId = parseInt(startBox.id.replace('b', '')) + 1000;
+        const flow = {
+          id: flowId,
+          type: flowName,
+          triggers: startBox.chatbotData.triggers || [],
+          steps: []
+        };
+        
+        // Skip start box, start from first connected question/response/end
+        const firstStep = this._getConnectedBoxes(startBox).find(cb => cb.type === 'question' || cb.type === 'response' || cb.type === 'end');
+        if (firstStep) {
+          const processedBoxes = new Set();
+          this._processBoxSequentially(firstStep, flow, processedBoxes, 1, flowId);
+        }
+        
+        // Remove triggers for subflows
+        if (flowName !== 'main') {
+          delete flow.triggers;
+        }
+        
+        return flow;
+      }
+      _processBoxSequentially(box, flow, processedBoxes, stepNumber, idMap){
+        if(processedBoxes.has(box.id)) return;
+        processedBoxes.add(box.id);
+        
+        let step = null;
+        if(box.type === 'question'){
+          step = {
+            step: stepNumber,
+            question: box.chatbotData.question || 'Pregunta sin definir',
+            key: box.chatbotData.key || '',
+            options: {},
+            subflows: {}
+          };
+          
+          // Buscar opciones conectadas, ordenadas por posición y
+          const optionBoxes = this._getConnectedBoxes(box).filter(cb => cb.type === 'option').sort((a, b) => a.y - b.y);
+          let optionList = '';
+          let hasSubflow = false;
+          optionBoxes.forEach((optBox, index) => {
+            // Extraer número del título (ej. '1. Café' -> '1')
+            const numMatch = optBox.title.match(/^(\d+)\.\s*(.*)$/);
+            const num = numMatch ? numMatch[1] : (index + 1).toString();
+            const optKey = optBox.chatbotData.value || optBox.chatbotData.text || `option${num}`;
+            let optText = optBox.chatbotData.text || optBox.chatbotData.value || (numMatch ? numMatch[2] : `Opción ${num}`);
+            const displayText = optText.charAt(0).toUpperCase() + optText.slice(1).replace(/azucar/g, 'azúcar');
+            optionList += `${num}. ${displayText}\n`;
+            
+            // Verificar si lleva a subflow
+            const nextFromOpt = this._getConnectedBoxes(optBox).find(cb => cb.type === 'start');
+            if (nextFromOpt) {
+              hasSubflow = true;
+              const targetName = nextFromOpt.title.toLowerCase().replace(/\s+/g, '');
+              const subflowId = idMap[targetName] || parseInt(nextFromOpt.id.replace('b', '')) + 1000;
+              step.subflows[subflowId.toString()] = [num, optKey];
+            } else {
+              step.options[optKey] = [optText];
+            }
+          });
+          
+          // Si hasSubflow (como question2), append list to question, options = {}
+          if (hasSubflow && optionList) {
+            step.question += '\n' + optionList.trim();
+            step.options = {};
+          }
+          
+          // Fallback para subflow questions sin connected options (usa chatbotData.options)
+          if (optionBoxes.length === 0 && box.chatbotData.options) {
+            let optIndex = 1;
+            let fallbackList = '';
+            // Sort alphabetically
+            Object.entries(box.chatbotData.options).sort(([a], [b]) => a.localeCompare(b)).forEach(([key, val]) => {
+              const num = optIndex.toString();
+              let optText = val[1] || key;
+              const displayText = optText.charAt(0).toUpperCase() + optText.slice(1).replace(/azucar/g, 'azúcar');
+              step.options[key] = val;
+              fallbackList += `${num}. ${displayText}\n`;
+              optIndex++;
+            });
+            if (fallbackList) {
+              step.question += '\n' + fallbackList.trim();
+            }
+          }
+          
+          // Omit empty fields before pushing
+          if (Object.keys(step.options).length === 0) delete step.options;
+          if (Object.keys(step.subflows).length === 0) delete step.subflows;
+          
+          flow.steps.push(step);
+        } else if(box.type === 'response' || box.type === 'end'){
+          step = {
+            step: stepNumber,
+            question: box.chatbotData.message || (box.type === 'end' ? 'Conversación terminada' : 'Respuesta sin definir'),
+            key: null
+          };
+          flow.steps.push(step);
+        }
+        
+        // Recurse on next sequential (non-option, non-start)
+        if (step) {
+          const nextSeq = this._getConnectedBoxes(box).find(cb => cb.type !== 'option' && cb.type !== 'start');
+          if (nextSeq) {
+            this._processBoxSequentially(nextSeq, flow, processedBoxes, stepNumber + 1, idMap);
+          }
+        }
+      }
+      _processSubFlows(flows){
+        // Eliminar duplicados como flow_b*, flow_*
+        Object.keys(flows).forEach(name => {
+          if (name.startsWith('flow_') || name.startsWith('flow_b')) {
+            delete flows[name];
+          }
+        });
+      }
+      _getConnectedBoxes(box){
+        const connected = [];
+        for(const conn of this.conns.values()){
+          if(conn.fromBox === box){
+            connected.push(conn.toBox);
+          }
+        }
+        return connected;
+      }
+      showPreview(){
+        const chatbotData = this._generateChatbotJSON();
+        if(Object.keys(chatbotData).length === 0) return;
+        
+        // Crear modal de vista previa
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background: rgba(0,0,0,0.8); z-index: 10000; display: flex;
+          align-items: center; justify-content: center;
+        `;
+        
+        const content = document.createElement('div');
+        content.style.cssText = `
+          background: #1e293b; padding: 20px; border-radius: 12px;
+          max-width: 80%; max-height: 80%; overflow: auto;
+          color: white; font-family: monospace; font-size: 12px;
+        `;
+        
+        content.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #22c55e;">🤖 Vista Previa del Chatbot</h3>
+            <button onclick="this.closest('.modal').remove()" style="background: #ef4444; border: none; color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer;">✕</button>
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(chatbotData, null, 2)}</pre>
+        `;
+        
+        modal.className = 'modal';
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+        
+        // Cerrar con ESC
+        const closeModal = (e) => {
+          if(e.key === 'Escape') modal.remove();
+        };
+        document.addEventListener('keydown', closeModal);
+        modal.addEventListener('click', (e) => {
+          if(e.target === modal) modal.remove();
+        });
+      }
+    }
+
+    // Instanciar y demo
+    const FLOW = new Flowchart();
+    
+    // Crear ejemplo de chatbot más realista completo
+    const mainStart = FLOW.addBox(80,80,'main','start');
+    mainStart.chatbotData.triggers = ['hola', 'pedido', 'quiero'];
+    mainStart.setBody(mainStart._getBodyText());
+    
+    const question1 = FLOW.addBox(320,80,'¿Nombre?','question');
+    question1.chatbotData.question = '👋 Hola, ¿cuál es tu nombre?';
+    question1.chatbotData.key = 'nombre';
+    question1.setBody(question1._getBodyText());
+    
+    const question2 = FLOW.addBox(560,80,'¿Qué pedir?','question');
+    question2.chatbotData.question = '¡Qué bien {{nombre}}! ¿Qué deseas pedir hoy?';
+    question2.chatbotData.key = 'opcion';
+    question2.setBody(question2._getBodyText());
+    
+    // Opciones para pregunta 2
+    const optionCafe = FLOW.addBox(300,180,'1. Café','option');
+    optionCafe.chatbotData.text = 'Café';
+    optionCafe.chatbotData.value = 'cafe';
+    optionCafe.setBody(optionCafe._getBodyText());
+    
+    const optionHelado = FLOW.addBox(450,180,'2. Helado','option');
+    optionHelado.chatbotData.text = 'Helado';
+    optionHelado.chatbotData.value = 'helado';
+    optionHelado.setBody(optionHelado._getBodyText());
+    
+    const optionPizza = FLOW.addBox(600,180,'3. Pizza','option');
+    optionPizza.chatbotData.text = 'Pizza';
+    optionPizza.chatbotData.value = 'pizza';
+    optionPizza.setBody(optionPizza._getBodyText());
+    
+    // Flujo cafe
+    const cafeStart = FLOW.addBox(80,300,'cafe','start');
+    cafeStart.chatbotData.triggers = ['cafe'];
+    cafeStart.setBody(cafeStart._getBodyText());
+    
+    const cafeQ1 = FLOW.addBox(320,300,'Tipo Café','question');
+    cafeQ1.chatbotData.question = '¿Qué tipo de café deseas?';
+    cafeQ1.chatbotData.key = 'tipoCafe';
+    // Opciones para cafeQ1
+    cafeQ1.chatbotData.options = {
+      latte: ["1", "latte"],
+      americano: ["2", "americano"],
+      cappuccino: ["3", "cappuccino"]
+    };
+    cafeQ1.setBody(cafeQ1._getBodyText());
+    
+    const cafeQ2 = FLOW.addBox(560,300,'¿Azúcar?','question');
+    cafeQ2.chatbotData.question = '¿Con azúcar o sin azúcar?';
+    cafeQ2.chatbotData.key = 'azucar';
+    // Opciones para cafeQ2
+    cafeQ2.chatbotData.options = {
+      "con azucar": ["1", "con", "con azucar"],
+      "sin azucar": ["2", "sin", "sin azucar"]
+    };
+    cafeQ2.setBody(cafeQ2._getBodyText());
+    
+    const cafeResponse = FLOW.addBox(800,300,'Respuesta Café','response');
+    cafeResponse.chatbotData.message = 'Gracias, tu café será preparado ☕️ {{tipoCafe}} {{azucar}}';
+    cafeResponse.setBody(cafeResponse._getBodyText());
+    
+    // Flujo helado
+    const heladoStart = FLOW.addBox(80,450,'helado','start');
+    heladoStart.chatbotData.triggers = ['helado'];
+    heladoStart.setBody(heladoStart._getBodyText());
+    
+    const heladoQ1 = FLOW.addBox(320,450,'Sabor Helado','question');
+    heladoQ1.chatbotData.question = '¿Qué sabor de helado deseas?';
+    heladoQ1.chatbotData.key = 'saborHelado';
+    heladoQ1.chatbotData.options = {
+      chocolate: ["1", "chocolate"],
+      vainilla: ["2", "vainilla"],
+      fresa: ["3", "fresa"]
+    };
+    heladoQ1.setBody(heladoQ1._getBodyText());
+    
+    const heladoQ2 = FLOW.addBox(560,450,'Presentación','question');
+    heladoQ2.chatbotData.question = '¿En qué lo quieres?';
+    heladoQ2.chatbotData.key = 'presentacion';
+    heladoQ2.chatbotData.options = {
+      cono: ["1", "cono"],
+      vaso: ["2", "vaso"]
+    };
+    heladoQ2.setBody(heladoQ2._getBodyText());
+    
+    const heladoResponse = FLOW.addBox(800,450,'Respuesta Helado','response');
+    heladoResponse.chatbotData.message = 'Genial, tu helado está en camino 🍦 {{saborHelado}} en {{presentacion}}';
+    heladoResponse.setBody(heladoResponse._getBodyText());
+    
+    // Flujo pizza
+    const pizzaStart = FLOW.addBox(80,600,'pizza','start');
+    pizzaStart.chatbotData.triggers = ['pizza'];
+    pizzaStart.setBody(pizzaStart._getBodyText());
+    
+    const pizzaQ1 = FLOW.addBox(320,600,'Sabor Pizza','question');
+    pizzaQ1.chatbotData.question = '¿De qué sabor quieres la pizza?';
+    pizzaQ1.chatbotData.key = 'saborPizza';
+    pizzaQ1.chatbotData.options = {
+      pepperoni: ["1", "pepperoni"],
+      hawaiana: ["2", "hawaiana"],
+      margarita: ["3", "margarita"]
+    };
+    pizzaQ1.setBody(pizzaQ1._getBodyText());
+    
+    const pizzaQ2 = FLOW.addBox(560,600,'Tamaño Pizza','question');
+    pizzaQ2.chatbotData.question = '¿Qué tamaño deseas?';
+    pizzaQ2.chatbotData.key = 'tamanoPizza';
+    pizzaQ2.chatbotData.options = {
+      pequeña: ["1", "pequeña", "chica"],
+      mediana: ["2", "mediana"],
+      grande: ["3", "grande"]
+    };
+    pizzaQ2.setBody(pizzaQ2._getBodyText());
+    
+    const pizzaResponse = FLOW.addBox(800,600,'Respuesta Pizza','response');
+    pizzaResponse.chatbotData.message = 'Perfecto {{nombre}} 🍕, tu pizza {{saborPizza}} tamaño {{tamanoPizza}} está en camino.';
+    pizzaResponse.setBody(pizzaResponse._getBodyText());
+    
+    // Conectar las cajas - main flow
+    FLOW.createConn(mainStart,'right',question1,'left');
+    FLOW.createConn(question1,'right',question2,'left');
+    FLOW.createConn(question2,'bottom',optionCafe,'top');
+    FLOW.createConn(question2,'bottom',optionHelado,'top');
+    FLOW.createConn(question2,'bottom',optionPizza,'top');
+    
+    // Subflow cafe
+    FLOW.createConn(optionCafe,'right',cafeStart,'left');
+    FLOW.createConn(cafeStart,'right',cafeQ1,'left');
+    FLOW.createConn(cafeQ1,'bottom',cafeQ2,'top');
+    FLOW.createConn(cafeQ2,'right',cafeResponse,'left');
+    
+    // Subflow helado
+    FLOW.createConn(optionHelado,'right',heladoStart,'left');
+    FLOW.createConn(heladoStart,'right',heladoQ1,'left');
+    FLOW.createConn(heladoQ1,'bottom',heladoQ2,'top');
+    FLOW.createConn(heladoQ2,'right',heladoResponse,'left');
+    
+    // Subflow pizza
+    FLOW.createConn(optionPizza,'right',pizzaStart,'left');
+    FLOW.createConn(pizzaStart,'right',pizzaQ1,'left');
+    FLOW.createConn(pizzaQ1,'bottom',pizzaQ2,'top');
+    FLOW.createConn(pizzaQ2,'right',pizzaResponse,'left');
+    
+    // Limpiar duplicados al inicializar
+    FLOW.removeDuplicateConnections();
+    FLOW.requestUpdate();
+  </script>
+</body>
+</html>

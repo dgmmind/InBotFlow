@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Chat Bot Café & Helados</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f5f5f5; }
+#chat { width: 350px; margin: 30px auto; background:white; padding:10px; border-radius:8px; box-shadow:0 0 5px rgba(0,0,0,0.2);}
+.msg { margin: 5px 0; padding: 8px; border-radius: 5px; white-space: pre-line; }
+.bot { background: #e1f5fe; text-align: left; }
+.user { background: #c8e6c9; text-align: right; }
+#sessionView { background:#222; color:#0f0; padding:10px; border-radius:5px; margin:20px auto; width:350px; height:200px; overflow:auto; }
+input { width: 70%; padding: 6px; }
+button { padding: 6px 10px; margin-left: 5px; }
+</style>
+</head>
+<body>
+<div id="chat"></div>
+<div style="text-align:center;margin-top:10px;">
+<input id="input" placeholder="Escribe tu mensaje..." />
+<button onclick="send()">Enviar</button>
+</div>
+<pre id="sessionView"></pre>
+
+<script>
+// -------------------------
+// Configuración
+// -------------------------
+const USER_PHONE = "50433158947";
+
+const flows = {
+  idle: { triggers: ["hola", "hi", "ole"], next: "askName" },
+  askName: { message: "👋 Hola, ¿cuál es tu nombre?", next: "greetUser" },
+  greetUser: { message: (name) => `Hola ${name}, ¿qué vas a pedir hoy? ☕ Café o 🍦 Helado`, next: "menu" },
+  menu: {
+    options: {
+      cafe: ["1", "cafe", "coffee"],
+      helado: ["2", "helado", "icecream", "ice cream"]
+    },
+    error: "❌ Responde '1/cafe/coffee' o '2/helado/icecream'"
+  },
+  coffeeMenu: { message: "☕ Menú de Cafés: Espresso, Latte, Cappuccino", next: "end" },
+  icecreamMenu: { message: "🍦 Menú de Helados: Vainilla, Chocolate, Fresa", next: "end" },
+  end: { message: "✅ Gracias por tu pedido. ¡En breve lo preparamos!" }
+};
+
+const sessions = {};
+
+// -------------------------
+// Funciones del Bot
+// -------------------------
+function handleFlow(phone, text) {
+  if (!sessions[phone]) sessions[phone] = { step: "idle", name: "", history: [], pedido: "" };
+  const session = sessions[phone];
+  const lower = text.trim().toLowerCase();
+
+  // Guardamos mensaje del usuario
+  session.history.push({ from: "user", text });
+  addMsg(`🧑 Usuario: ${text}`, "user");
+
+  // Flujos
+  switch(session.step) {
+    case "idle":
+      if (flows.idle.triggers.includes(lower)) {
+        session.step = "askName";
+        sendBot(flows.askName.message);
+      } else {
+        sendBot("👋 Escribe 'hola' para empezar");
+      }
+      break;
+
+    case "askName":
+      if (flows.idle.triggers.includes(lower)) {
+        sendBot("❌ Por favor escribe tu nombre, no escribas saludos");
+        break;
+      }
+      session.name = text.trim();
+      session.step = "greetUser";
+      sendBot(flows.greetUser.message(session.name));
+      break;
+
+    case "greetUser":
+    case "menu":
+      let matched = false;
+      for (const key in flows.menu.options) {
+        if (flows.menu.options[key].includes(lower)) {
+          session.step = key === "cafe" ? "coffeeMenu" : "icecreamMenu";
+          session.pedido = key;
+          sendBot(flows[session.step].message);
+          session.step = "end";
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) sendBot(flows.menu.error);
+      break;
+
+    case "end":
+      sendBot("🔄 El flujo ha terminado. Escribe 'hola' para empezar de nuevo.");
+      session.step = "idle";
+      session.name = "";
+      session.pedido = "";
+      break;
+  }
+  updateSessionView();
+}
+
+function sendBot(message) {
+  sessions[USER_PHONE].history.push({ from: "bot", text: message });
+  addMsg(`🤖 Bot: ${message}`, "bot");
+}
+
+// -------------------------
+// UI Chat
+// -------------------------
+function addMsg(text, cls) {
+  const chat = document.getElementById("chat");
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.innerText = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function updateSessionView() {
+  document.getElementById("sessionView").innerText = JSON.stringify(sessions, null, 2);
+}
+
+function attach(phone, message) {
+  handleFlow(phone, message);
+}
+
+function send() {
+  const text = document.getElementById("input").value.trim();
+  if (!text) return;
+  document.getElementById("input").value = "";
+  attach(USER_PHONE, text);
+}
+</script>
+</body>
+</html>
