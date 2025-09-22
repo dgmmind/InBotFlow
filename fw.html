@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Flowchart Editable SVG</title>
+<style>
+  body { font-family: Arial; background:#f9f9f9; display:flex; margin:0; height:100vh; }
+  #left { flex:1; padding:10px; overflow:auto; }
+  svg { border:1px solid #ccc; background:white; }
+  .node { cursor: grab; }
+  text { font-size:14px; fill:white; font-weight:bold; text-anchor:middle; dominant-baseline:middle; pointer-events:none; }
+  .connector { stroke:#888; stroke-width:2; fill:none; cursor:pointer; }
+  .port { fill:black; cursor:crosshair; }
+  .port:hover { fill:red; }
+  #jsonView { margin-top:10px; background:#222; color:#0f0; padding:10px; font-size:12px; white-space:pre; height:250px; overflow:auto; }
+  #sidebar { width:280px; background:#fff; border-left:2px solid #ccc; padding:10px; display:none; flex-shrink:0; }
+  #sidebar input, #sidebar textarea { width:100%; margin-bottom:8px; }
+  .delete-btn {
+    background: red;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    position: absolute;
+    z-index: 1000;
+  }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div id="toolbar">
+    <button onclick="addNode('trigger')">➕ Trigger</button>
+    <button onclick="addNode('question')">➕ Question</button>
+    <button onclick="addNode('decision')">➕ Decision</button>
+    <button onclick="addNode('response')">➕ Response</button>
+    <button onclick="addNode('flow')">➕ Flow</button>
+  </div>
+
+  <svg id="flowchart" width="900" height="600"></svg>
+
+  <h3>JSON en tiempo real</h3>
+  <pre id="jsonView"></pre>
+</div>
+
+<div id="sidebar">
+  <h3>Editar Nodo</h3>
+  <div id="sidebar-content"></div>
+  <button onclick="saveSidebarEdits()">💾 Guardar cambios</button>
+  <button onclick="deleteSelectedNode()">🗑️ Eliminar este nodo</button>
+</div>
+
+<script>
+const svg = document.getElementById("flowchart");
+let nodes = [];
+let connections = [];
+let dragging = null;
+let offsetX = 0, offsetY = 0;
+let nodeCount = 0;
+let pendingConnection = null;
+let selectedNode = null;
+let deleteLabel = null;
+
+// -----------------------
+// Crear nodo
+// -----------------------
+function addNode(type) {
+  const x = 50 + nodes.length*120;
+  const y = 50 + (nodes.length%4)*100;
+  const colorMap = {trigger:'blue', question:'purple', decision:'orange', response:'green', flow:'teal'};
+  const node = createNode(x, y, type.toUpperCase(), colorMap[type]);
+  node.type = type;
+
+  if(type==='trigger') node.triggers=['hola'];
+  if(type==='question'){ node.text='Pregunta'; node.key='campo1'; node.options=[]; }
+  if(type==='decision'){ node.text='Pregunta de decisión'; node.options=['Opción1','Opción2']; }
+  if(type==='response'){ node.text='Respuesta'; node.key=''; }
+  if(type==='flow'){ node.text='Nuevo Flow'; node.nodesInFlow=[]; }
+
+  node.group.addEventListener('click', ()=>showSidebar(node));
+
+  updateJSON();
+}
+
+// -----------------------
+// Crear nodo SVG
+// -----------------------
+function createNode(x, y, label, color){
+  nodeCount++;
+  const group = document.createElementNS("http://www.w3.org/2000/svg","g");
+  group.setAttribute("class","node");
+  group.dataset.id=nodeCount;
+
+  const rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
+  rect.setAttribute("x",x); rect.setAttribute("y",y);
+  rect.setAttribute("width",100); rect.setAttribute("height",60);
+  rect.setAttribute("rx",8); rect.setAttribute("ry",8);
+  rect.setAttribute("fill",color); rect.setAttribute("stroke","#222"); rect.setAttribute("stroke-width",2);
+
+  const text = document.createElementNS("http://www.w3.org/2000/svg","text");
+  text.setAttribute("x",x+50); text.setAttribute("y",y+30); text.textContent=label;
+
+  const portLeft = document.createElementNS("http://www.w3.org/2000/svg","circle");
+  portLeft.setAttribute("cx",x); portLeft.setAttribute("cy",y+30); portLeft.setAttribute("r",5); portLeft.setAttribute("class","port");
+
+  const portRight = document.createElementNS("http://www.w3.org/2000/svg","circle");
+  portRight.setAttribute("cx",x+100); portRight.setAttribute("cy",y+30); portRight.setAttribute("r",5); portRight.setAttribute("class","port");
+
+  group.append(rect,text,portLeft,portRight);
+  svg.appendChild(group);
+
+  const nodeData = {id:nodeCount, x, y, w:100, h:60, group, rect, textEl:text, ports:{left:portLeft,right:portRight}, type:null};
+  nodes.push(nodeData);
+
+  group.addEventListener("mousedown", e=>{
+    if(e.target.classList.contains("port")) return;
+    dragging=nodeData;
+    offsetX=e.offsetX - nodeData.x;
+    offsetY=e.offsetY - nodeData.y;
+  });
+
+  [portLeft,portRight].forEach(port=>{
+    port.addEventListener("click",()=>handlePortClick(nodeData,port));
+  });
+
+  return nodeData;
+}
+
+// -----------------------
+// Sidebar de edición
+// -----------------------
+function showSidebar(node){
+  selectedNode=node;
+  document.getElementById("sidebar").style.display="block";
+  let html="";
+  if(node.type==="trigger"){
+    html += "Triggers (coma):<br><input id='edit-triggers' value='"+node.triggers.join(",")+"'><br>";
+  }
+  if(node.type==="question"){
+    html += "Texto:<br><input id='edit-text' value='"+node.text+"'><br>";
+    html += "Key:<br><input id='edit-key' value='"+(node.key||"")+"'><br>";
+    html += "Opciones (coma):<br><input id='edit-options' value='"+node.options.join(",")+"'><br>";
+  }
+  if(node.type==="decision"){
+    html += "Texto:<br><input id='edit-text' value='"+node.text+"'><br>";
+    html += "Opciones (coma):<input id='edit-options' value='"+node.options.join(",")+"'><br>";
+  }
+  if(node.type==="response"){
+    html += "Texto:<br><textarea id='edit-text'>"+node.text+"</textarea><br>";
+    html += "Key:<br><input id='edit-key' value='"+(node.key||"")+"'><br>";
+  }
+  if(node.type==="flow"){
+    html += "Nombre Flow:<br><input id='edit-text' value='"+node.text+"'><br>";
+  }
+  document.getElementById("sidebar-content").innerHTML=html;
+}
+
+function saveSidebarEdits(){
+  if(!selectedNode) return;
+  if(selectedNode.type==="trigger") selectedNode.triggers=document.getElementById("edit-triggers").value.split(",").map(t=>t.trim());
+  if(selectedNode.type==="question"){ 
+    selectedNode.text=document.getElementById("edit-text").value;
+    selectedNode.key=document.getElementById("edit-key").value;
+    selectedNode.options=document.getElementById("edit-options").value.split(",").map(t=>t.trim());
+  }
+  if(selectedNode.type==="decision"){ 
+    selectedNode.text=document.getElementById("edit-text").value;
+    selectedNode.options=document.getElementById("edit-options").value.split(",").map(t=>t.trim());
+  }
+  if(selectedNode.type==="response"){
+    selectedNode.text=document.getElementById("edit-text").value;
+    selectedNode.key=document.getElementById("edit-key").value;
+  }
+  if(selectedNode.type==="flow"){
+    selectedNode.text=document.getElementById("edit-text").value;
+  }
+  selectedNode.textEl.textContent = selectedNode.type==="trigger" ? "TRIGGER" : selectedNode.text;
+  updateJSON();
+}
+
+// -----------------------
+// Drag
+// -----------------------
+svg.addEventListener("mousemove", e=>{
+  if(dragging){
+    dragging.x=e.offsetX-offsetX;
+    dragging.y=e.offsetY-offsetY;
+    dragging.rect.setAttribute("x",dragging.x);
+    dragging.rect.setAttribute("y",dragging.y);
+    dragging.textEl.setAttribute("x",dragging.x+dragging.w/2);
+    dragging.textEl.setAttribute("y",dragging.y+dragging.h/2);
+    dragging.ports.left.setAttribute("cx",dragging.x);
+    dragging.ports.left.setAttribute("cy",dragging.y+dragging.h/2);
+    dragging.ports.right.setAttribute("cx",dragging.x+dragging.w);
+    dragging.ports.right.setAttribute("cy",dragging.y+dragging.h/2);
+    updateConnections();
+  }
+});
+svg.addEventListener("mouseup", ()=>{ dragging=null; });
+
+// -----------------------
+// Conexiones
+// -----------------------
+function handlePortClick(node,port){
+  if(!pendingConnection){ pendingConnection={node,port}; port.setAttribute("fill","red"); }
+  else{
+    if(pendingConnection.node!==node){
+      if(validateConnection(pendingConnection.node,node)){
+        connect(pendingConnection.node,node,pendingConnection.port,port);
+      } else {
+        alert("❌ Conexión no permitida según reglas");
+      }
+    }
+    pendingConnection.port.setAttribute("fill","black");
+    pendingConnection=null;
+    updateJSON();
+  }
+}
+
+// -----------------------
+// Validación de conexión
+// -----------------------
+function validateConnection(n1,n2){
+  if(n2.type==="trigger") return false;
+  if(n1.type==="response" && connections.find(c=>c.from.id===n1.id)) return false;
+  return true;
+}
+
+// -----------------------
+// Crear conexión
+// -----------------------
+function connect(n1,n2,p1,p2){
+  const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+  path.setAttribute("class","connector");
+  path.addEventListener("click",e=>showDeleteLabel(e,n1,n2,path));
+  svg.insertBefore(path,svg.firstChild);
+  connections.push({from:n1,to:n2,path,p1,p2});
+  updateConnections();
+}
+
+// -----------------------
+// Eliminar línea con label
+// -----------------------
+function showDeleteLabel(evt, n1, n2, path) {
+  if(deleteLabel) deleteLabel.remove();
+
+  deleteLabel = document.createElement("button");
+  deleteLabel.innerText = "Eliminar";
+  deleteLabel.className = "delete-btn";
+  deleteLabel.style.left = evt.pageX + "px";
+  deleteLabel.style.top = (evt.pageY - 20) + "px";
+  deleteLabel.addEventListener("click", () => {
+    deleteConnection(path);
+    deleteLabel.remove();
+    deleteLabel=null;
+  });
+  document.body.appendChild(deleteLabel);
+}
+
+function deleteConnection(path){
+  connections = connections.filter(c=>{
+    if(c.path===path){ svg.removeChild(c.path); return false; }
+    return true;
+  });
+  updateJSON();
+}
+
+// -----------------------
+// Eliminar nodo
+// -----------------------
+function deleteSelectedNode(){
+  if(!selectedNode) return;
+  connections = connections.filter(c=>{
+    if(c.from===selectedNode || c.to===selectedNode){
+      svg.removeChild(c.path);
+      return false;
+    }
+    return true;
+  });
+  svg.removeChild(selectedNode.group);
+  nodes = nodes.filter(n=>n!==selectedNode);
+  selectedNode=null;
+  document.getElementById("sidebar").style.display="none";
+  updateJSON();
+}
+
+// -----------------------
+// Actualizar conexiones
+// -----------------------
+function updateConnections(){
+  connections.forEach(c=>{
+    const sx=parseFloat(c.p1.getAttribute("cx")), sy=parseFloat(c.p1.getAttribute("cy"));
+    const ex=parseFloat(c.p2.getAttribute("cx")), ey=parseFloat(c.p2.getAttribute("cy"));
+    const mx=(sx+ex)/2;
+    const d=`M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`;
+    c.path.setAttribute("d",d);
+  });
+  updateJSON();
+}
+
+// -----------------------
+// JSON en tiempo real
+// -----------------------
+function updateJSON(){
+  const exportNodes = nodes.map(n=>{
+    const data={id:n.id,type:n.type,x:n.x,y:n.y};
+    if(n.type==="trigger") data.triggers=n.triggers;
+    if(n.type==="question"){ data.text=n.text; data.key=n.key; data.options=n.options; }
+    if(n.type==="decision"){ 
+      data.text=n.text; 
+      data.options=n.options.map(o=>({label:o,next:null})); // next se llena solo con ID dentro del flow
+    }
+    if(n.type==="response"){ data.text=n.text; if(n.key) data.key=n.key; }
+    if(n.type==="flow"){ data.text=n.text; data.nodesInFlow=[]; }
+
+    return data;
+  });
+
+  // -----------------------
+  // Colocar nodos dentro de flow correctamente
+  // -----------------------
+  connections.forEach(conn=>{
+    const fromNode = exportNodes.find(n=>n.id===conn.from.id);
+    const toNode = exportNodes.find(n=>n.id===conn.to.id);
+
+    if(fromNode.type==="flow" && toNode){
+      // Evitar duplicados
+      if(!fromNode.nodesInFlow.find(n=>n.id===toNode.id)){
+        fromNode.nodesInFlow.push(toNode);
+      }
+    } else if(fromNode.type!=="flow" && fromNode.type!=="decision" && toNode){
+      fromNode.next = toNode.id;
+    } 
+    // Decisions mantienen options solo con label, next será id del nodo dentro del flow (no objeto completo)
+    else if(fromNode.type==="decision" && toNode){
+      const option = fromNode.options.find(o=>o.next===null);
+      if(option) option.next = toNode.id;
+    }
+  });
+
+  document.getElementById("jsonView").textContent = JSON.stringify({nodes:exportNodes},null,2);
+}
+</script>
+</body>
+</html>

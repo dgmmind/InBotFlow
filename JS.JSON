@@ -1,0 +1,127 @@
+{
+    "nodes": [
+      {
+        "id": 1,
+        "type": "trigger",
+        "x": 17,
+        "y": 39,
+        "triggers": [
+          "hola"
+        ],
+        "next": 2
+      },
+      {
+        "id": 2,
+        "type": "question",
+        "x": 116,
+        "y": 149,
+        "text": "Cual es su nombre?",
+        "key": "name",
+        "options": [
+          ""
+        ],
+        "next": 3
+      },
+      {
+        "id": 3,
+        "type": "decision",
+        "x": 257,
+        "y": 38,
+        "text": "Ok {{name}} que va pedir hoy tengo cafe y helados",
+        "options": [
+          {
+            "label": "cafe",
+            "next": 4
+          },
+          {
+            "label": "helados",
+            "next": 5
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "flow",
+        "x": 413,
+        "y": 46,
+        "text": "Helados",
+        "nodesInFlow": [
+          {
+            "id": 8,
+            "type": "question",
+            "x": 582,
+            "y": 32,
+            "text": "Que sabor desea fresa o vainilla?",
+            "key": "sabor",
+            "options": [
+              "fresa",
+              "vainilla"
+            ],
+            "next": 11
+          },
+          {
+            "id": 11,
+            "type": "question",
+            "x": 736,
+            "y": 90,
+            "text": "Paga con efectivo o tranferencia?",
+            "key": "payment",
+            "options": [
+              "tranferencia",
+              "efectivo"
+            ],
+            "next": 14
+          },
+          {
+            "id": 14,
+            "type": "response",
+            "x": 986,
+            "y": 74,
+            "text": "Gracias por su prefrencia, epdido sera enviado"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "flow",
+        "x": 341,
+        "y": 191,
+        "text": "Cafe",
+        "nodesInFlow": [
+          {
+            "id": 9,
+            "type": "question",
+            "x": 494,
+            "y": 197,
+            "text": "Cafe helado o caliente?",
+            "key": "campo1",
+            "options": [
+              "helado",
+              "caliente"
+            ],
+            "next": 12
+          },
+          {
+            "id": 12,
+            "type": "question",
+            "x": 675,
+            "y": 219,
+            "text": "Paga con efectivo o tranferencia?",
+            "key": "payment",
+            "options": [
+              "tranferencia",
+              "efectivo"
+            ],
+            "next": 13
+          },
+          {
+            "id": 13,
+            "type": "response",
+            "x": 945,
+            "y": 219,
+            "text": "Gracias por su prefrencia, epdido sera enviado"
+          }
+        ]
+      }
+    ]
+  }
